@@ -1,0 +1,79 @@
+import logging
+import os
+
+import discord
+from discord.ext import commands
+from dotenv import load_dotenv
+
+from database import create_pool, ensure_schema
+
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+load_dotenv()
+
+
+class BleachBot(commands.Bot):
+    def __init__(self) -> None:
+        intents = discord.Intents.default()
+        super().__init__(command_prefix="!", intents=intents)
+        self.db_pool = None
+        self.guild_id = self._parse_guild_id()
+
+    @staticmethod
+    def _parse_guild_id() -> int | None:
+        guild_id = os.getenv("DISCORD_GUILD_ID")
+        if not guild_id:
+            return None
+
+        try:
+            return int(guild_id)
+        except ValueError:
+            raise RuntimeError("DISCORD_GUILD_ID must be a valid integer.") from None
+
+    async def setup_hook(self) -> None:
+        self.db_pool = await create_pool()
+        await ensure_schema(self.db_pool)
+
+        if self.guild_id is not None:
+            guild = discord.Object(id=self.guild_id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            logging.info("Synced %s command(s) to guild %s", len(synced), self.guild_id)
+        else:
+            synced = await self.tree.sync()
+            logging.info("Synced %s global command(s)", len(synced))
+
+    async def close(self) -> None:
+        if self.db_pool is not None:
+            await self.db_pool.close()
+        await super().close()
+
+
+bot = BleachBot()
+
+
+@bot.event
+async def on_ready() -> None:
+    if bot.user is None:
+        return
+
+    logging.info("Logged in as %s", bot.user)
+
+
+@bot.tree.command(name="ping", description="Check whether the bot is online.")
+async def ping(interaction: discord.Interaction) -> None:
+    latency_ms = round(bot.latency * 1000)
+    await interaction.response.send_message(f"Pong! API latency: {latency_ms}ms.")
+
+
+def main() -> None:
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        raise RuntimeError("DISCORD_TOKEN is required.")
+
+    bot.run(token, log_handler=None)
+
+
+if __name__ == "__main__":
+    main()
