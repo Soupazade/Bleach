@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from database import create_pool, ensure_schema
+from src.database import create_pool, ensure_schema
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
