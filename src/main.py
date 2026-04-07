@@ -2,7 +2,7 @@ import logging
 import os
 
 import discord
-from discord.ext import commands
+from discord import app_commands
 from dotenv import load_dotenv
 
 from src.database import create_pool, ensure_schema
@@ -10,15 +10,27 @@ from src.database import create_pool, ensure_schema
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+
+class IgnoreDiscordNoise(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        ignored_messages = {
+            "PyNaCl is not installed, voice will NOT be supported",
+        }
+        return record.getMessage() not in ignored_messages
+
+
+logging.getLogger("discord.client").addFilter(IgnoreDiscordNoise())
+
 load_dotenv()
 
 
-class BleachBot(commands.Bot):
+class BleachBot(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(intents=intents)
         self.db_pool = None
         self.guild_id = self._parse_guild_id()
+        self.tree = app_commands.CommandTree(self)
 
     @staticmethod
     def _parse_guild_id() -> int | None:
@@ -44,6 +56,12 @@ class BleachBot(commands.Bot):
             synced = await self.tree.sync()
             logging.info("Synced %s global command(s)", len(synced))
 
+    async def on_ready(self) -> None:
+        if self.user is None:
+            return
+
+        logging.info("Logged in as %s", self.user)
+
     async def close(self) -> None:
         if self.db_pool is not None:
             await self.db_pool.close()
@@ -51,14 +69,6 @@ class BleachBot(commands.Bot):
 
 
 bot = BleachBot()
-
-
-@bot.event
-async def on_ready() -> None:
-    if bot.user is None:
-        return
-
-    logging.info("Logged in as %s", bot.user)
 
 
 @bot.tree.command(name="ping", description="Check whether the bot is online.")
