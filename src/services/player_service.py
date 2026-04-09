@@ -63,6 +63,13 @@ class ResourceSyncResult:
     resting_minutes: int = 0
 
 
+@dataclass(slots=True)
+class TimedActivityWindow:
+    activity_type: str
+    start_time: datetime
+    end_time: datetime
+
+
 async def has_legacy_discord_user_id_column(connection: Connection) -> bool:
     return await connection.fetchval(
         """
@@ -119,6 +126,33 @@ async def update_player_record(
     return await connection.fetchrow(query, *values)
 
 
+async def get_active_stamina_activity_window(
+    connection: Connection,
+    user_id: int,
+) -> TimedActivityWindow | None:
+    # Timed activities should pause passive stamina recovery while they are running.
+    # Explore is live now, and training can plug into this same helper later.
+    record = await connection.fetchrow(
+        """
+        SELECT
+            'exploring' AS activity_type,
+            start_time,
+            end_time
+        FROM active_explorations
+        WHERE user_id = $1
+        """,
+        user_id,
+    )
+    if record is None:
+        return None
+
+    return TimedActivityWindow(
+        activity_type=str(record["activity_type"]),
+        start_time=record["start_time"],
+        end_time=record["end_time"],
+    )
+
+
 async def sync_player_record(
     connection: Connection,
     record: Record,
@@ -153,7 +187,21 @@ async def sync_player_record(
             updates["stamina_updated_at"] = now
     else:
         stamina_updated_at = record["stamina_updated_at"] or now
-        elapsed_minutes = calculate_minutes_elapsed(stamina_updated_at, now)
+        activity_window = await get_active_stamina_activity_window(
+            connection,
+            int(record["user_id"]),
+        )
+        if activity_window is not None and activity_window.end_time > now:
+            elapsed_minutes = 0
+        else:
+            passive_recovery_start = stamina_updated_at
+            if activity_window is not None:
+                passive_recovery_start = max(
+                    stamina_updated_at,
+                    activity_window.end_time,
+                )
+
+            elapsed_minutes = calculate_minutes_elapsed(passive_recovery_start, now)
 
         if elapsed_minutes > 0:
             passive_stamina_gained = calculate_passive_stamina_recovery(
