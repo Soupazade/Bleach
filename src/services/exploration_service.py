@@ -429,9 +429,9 @@ def _weighted_event_type(exploration: ActiveExploration) -> ExploreEventType:
 
 def _roll_resolution_flow(approach: ExploreApproachDefinition) -> ExploreFlowType:
     weights_by_risk = {
-        "low": (70, 24, 6),
-        "medium": (60, 30, 10),
-        "high": (48, 36, 16),
+        "low": (45, 40, 15),
+        "medium": (38, 42, 20),
+        "high": (30, 45, 25),
     }
     instant_weight, single_weight, multi_weight = weights_by_risk.get(
         approach.risk_tier,
@@ -486,16 +486,26 @@ def _resolve_combat_event(exploration: ActiveExploration) -> tuple[str, str, int
         "high": 0.55,
     }
     won = random.random() < win_chance_by_risk.get(approach.risk_tier, 0.64)
+    victory_followups = (
+        "You meet it head-on and come out the other side still breathing.",
+        "You answer the rush with your own and force the street to blink first.",
+        "It gets ugly fast, but you are the one left standing when the dust settles.",
+    )
+    setback_followups = (
+        "You get out, but not clean. The street makes sure you feel the price of it.",
+        "You survive it, bruised and breathing hard, with enough sense to know how close it got.",
+        "You stagger clear with your life and a fresh reminder that Rukongai never swings light.",
+    )
 
     if won:
         xp_gained = random.randint(12, 20)
         outcome = "Victory"
-        description = f"{description} You grit your teeth, answer the pressure head-on, and come out standing."
+        description = f"{description} {random.choice(victory_followups)}"
         title = f"{event.title} Won"
     else:
         xp_gained = 5
         outcome = "Setback"
-        description = f"{description} You survive, but the clash leaves you bruised, breathing hard, and reminded what these streets cost."
+        description = f"{description} {random.choice(setback_followups)}"
         title = f"{event.title} Lost"
 
     return title, description, xp_gained, outcome
@@ -508,10 +518,7 @@ def _resolve_choice_event(exploration: ActiveExploration) -> tuple[str, str, int
     xp_floor = max(3, approach.xp_min - 1)
     xp_ceiling = max(xp_floor, approach.xp_max - 2)
     xp_gained = random.randint(xp_floor, xp_ceiling)
-    description = (
-        f"{_format_event_description(event, exploration)} "
-        "Your read on the moment pays off, and the district teaches you something worth keeping."
-    )
+    description = _format_event_description(event, exploration)
     return event.title, description, xp_gained
 
 
@@ -519,7 +526,7 @@ def _resolve_flavor_event(exploration: ActiveExploration) -> tuple[str, str, int
     event_pool = get_location_event_pool(exploration.location)
     event = random.choice(event_pool.flavor_events)
     description = _format_event_description(event, exploration)
-    return event.title, description, 0
+    return event.title, description, random.randint(2, 4)
 
 
 def roll_instant_exploration_event(
@@ -658,12 +665,6 @@ def _get_instant_reputation_change(
     event_type: Literal["reward", "combat", "choice", "flavor"],
     combat_outcome: str | None,
 ) -> int:
-    if event_type == "reward":
-        return 2
-    if event_type == "choice":
-        return 2
-    if event_type == "combat":
-        return 2 if combat_outcome == "Victory" else -2
     return 0
 
 
@@ -1009,7 +1010,6 @@ async def resolve_exploration(
                     prompt = await _create_special_offer(connection, base_resolution)
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
 
-                # TODO: Apply region reputation changes here once instant outcomes carry reputation deltas.
                 player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
                     connection,
                     user_id,
@@ -1081,7 +1081,6 @@ async def advance_exploration_choice(
 
                 selected_option = encounter.options[option_slot - 1]
                 outcome = selected_option.outcome
-                # TODO: Apply region reputation changes here once NPC outcomes carry reputation metadata.
                 current_player = await _get_current_player(connection, user_id)
                 adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(
                     current_player,
@@ -1129,7 +1128,6 @@ async def advance_exploration_choice(
                     if session.base_xp is None:
                         return ExplorationChoiceAdvanceResult(status="missing")
 
-                    # TODO: Apply region reputation changes here when stored base outcomes include reputation deltas.
                     adjusted_xp, _ = _apply_location_xp_modifier(
                         player,
                         session.location,
@@ -1250,7 +1248,6 @@ async def advance_exploration_choice(
                 prompt = await _create_special_offer(connection, base_resolution)
                 return ExplorationChoiceAdvanceResult(status="advanced", prompt=prompt)
 
-            # TODO: Apply region reputation changes here once branching outcomes carry reputation deltas.
             player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
                 connection,
                 user_id,

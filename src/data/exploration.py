@@ -336,28 +336,29 @@ RUKONGAI_STREETS_EVENTS = LocationEventPool(
         ExplorationEventTemplate(
             title="Scrap Luck",
             description=(
-                "During **{approach}**, you turn up a knot of salvage tucked beneath rotting boards. "
-                "It is not much, but in Rukongai even a fistful of scraps feels like a victory."
+                "Halfway through **{approach}**, your foot kicks something under a sheet of warped wood. "
+                "It is only a little salvage, but tonight that little feels like the district looked away for one second and let you keep it."
             ),
         ),
         ExplorationEventTemplate(
             title="A Kind Hand in a Hard Place",
             description=(
-                "While moving through **{approach}**, an exhausted soul repays your decency with a wrapped ration and a useful lead. "
-                "Brief kindness still survives in these streets."
+                "Near the end of **{approach}**, someone you helped earlier presses a wrapped ration into your hand without meeting your eyes. "
+                "No speech. No thanks. Just proof that kindness is not dead here yet, only ashamed to be seen."
             ),
         ),
         ExplorationEventTemplate(
             title="Market Edge Score",
             description=(
-                "Your **{approach}** pays off near the market fringe. After the shouting dies down, you collect what others were too tired or too scared to fight over."
+                "The market fringe breaks into shouting, then silence. By the time your **{approach}** carries you through the aftermath, the best scraps are gone but not all of them. "
+                "You come away with enough to call it a good night by Rukongai standards."
             ),
         ),
         ExplorationEventTemplate(
             title="Rumor Turned Reward",
             description=(
-                "A rumor tied to **{approach}** leads you to a hidden cache behind split stone and damp cloth. "
-                "For once, the whispers were worth following."
+                "A whisper picked up during **{approach}** leads you behind split stone and mold-stiff cloth. "
+                "Most rumors out here rot on the tongue. This one leaves something real in your hands."
             ),
         ),
     ),
@@ -365,25 +366,29 @@ RUKONGAI_STREETS_EVENTS = LocationEventPool(
         ExplorationEventTemplate(
             title="Alley Ambush",
             description=(
-                "The path opened by **{approach}** draws you into a narrow alley where hungry eyes and bad intent were already waiting."
+                "A narrow alley opens under **{approach}**, and the silence inside it is wrong. "
+                "By the time you feel the eyes on you, the first step toward violence is already taken."
             ),
         ),
         ExplorationEventTemplate(
             title="Weak Hollow Stirring",
             description=(
-                "A thin spiritual shriek cuts through your **{approach}** as a weak hollow lashes out from the wreckage between homes."
+                "A thin shriek tears across **{approach}** and something hungry lunges out from the wreckage between homes. "
+                "Weak or not, a hollow in a poor block is still bad news for everyone nearby."
             ),
         ),
         ExplorationEventTemplate(
             title="Gang Pressure",
             description=(
-                "Your **{approach}** carries you into a block claimed by local toughs. They read your presence as a challenge and move first."
+                "Your **{approach}** takes you through a stretch claimed by local toughs who have not eaten enough and want you to know it. "
+                "One hard look becomes two, and then the whole block shifts."
             ),
         ),
         ExplorationEventTemplate(
             title="Corner Turned Violent",
             description=(
-                "What began as **{approach}** turns sharp when a desperate soul mistakes resolve for weakness and tries to take what little you have."
+                "It starts with a stare, then a shove, then somebody deciding your worn-out little pile of survival ought to be theirs. "
+                "**{approach}** turns ugly in a blink."
             ),
         ),
     ),
@@ -391,29 +396,28 @@ RUKONGAI_STREETS_EVENTS = LocationEventPool(
         ExplorationEventTemplate(
             title="A Whisper Worth Chasing",
             description=(
-                "In the middle of **{approach}**, you catch a thread of rumor about a safer route, a hidden stash, and a gang collecting debts. "
-                "You choose the lead that feels most alive."
+                "A rumor catches on the edge of **{approach}** and refuses to leave your head. "
+                "Safe route. Hidden stash. Debt collectors on the move. Three possibilities, and all of them smell like trouble."
             ),
         ),
         ExplorationEventTemplate(
             title="Need Versus Opportunity",
             description=(
-                "**{approach}** puts you between a starving stranger and a risky opening elsewhere in the district. "
-                "Whatever you choose, Rukongai makes sure you remember it."
+                "A stranger with hollow cheeks needs help now. Ten steps away, a risky opening cracks wide in the district. "
+                "**{approach}** gives you just enough time to hate whichever choice you make."
             ),
         ),
         ExplorationEventTemplate(
             title="The Street Tests Your Instincts",
             description=(
-                "A knot of frightened souls breaks around your **{approach}**, revealing two bad options and one narrow chance. "
-                "You trust your judgment and move."
+                "The crowd breaks wrong during **{approach}**. Fear runs one way, hunger runs the other, and for one heartbeat you can see the shape of what comes next."
             ),
         ),
         ExplorationEventTemplate(
             title="A Lead in the Dust",
             description=(
-                "The trail created by **{approach}** leaves you with a small decision: follow the noise, guard what you found, or disappear before the street notices. "
-                "You read the moment right."
+                "Dust, boot marks, a dropped cloth charm, and noise from farther down the lane. "
+                "**{approach}** leaves you staring at one of those small moments that only stay small if you walk away."
             ),
         ),
     ),
@@ -421,27 +425,28 @@ RUKONGAI_STREETS_EVENTS = LocationEventPool(
         ExplorationEventTemplate(
             title="Another Night in Rukongai",
             description=(
-                "**{approach}** brings no prize this time. You pass smoke, patched roofs, and tired faces, and learn again how survival sets the rhythm here."
+                "**{approach}** gives you no score worth bragging about. Just smoke in your clothes, thin lantern light, and the soft scrape of neighbors making one more night out of almost nothing."
             ),
         ),
         ExplorationEventTemplate(
             title="Hunger in the Air",
             description=(
-                "There is no clean reward waiting at the end of **{approach}**. Just thin soup, low voices, and the heavy truth that most souls here are one bad day from breaking."
+                "You end **{approach}** near a cookfire full of water pretending to be soup. "
+                "Nobody laughs. Nobody complains. They just keep waiting for it to be enough."
             ),
         ),
         ExplorationEventTemplate(
             title="Small Mercy, Small Hope",
             description=(
-                "Your **{approach}** ends with nothing to claim, only the sight of neighbors sharing what little they have. "
-                "In a place this hard, even that feels meaningful."
+                "At the end of **{approach}**, you catch two neighbors splitting a meal that would not fill one stomach. "
+                "They do it anyway. Somehow that stays with you longer than a bigger prize might have."
             ),
         ),
         ExplorationEventTemplate(
             title="The District Watches Back",
             description=(
-                "By the end of **{approach}**, the alleys have given you nothing but scraped nerves and sharper awareness. "
-                "Sometimes surviving the block is the whole result."
+                "The alleys give you no reward, only the feeling of being weighed. "
+                "By the time **{approach}** ends, you know the block a little better, and it knows you too."
             ),
         ),
     ),
@@ -458,8 +463,8 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                 key="step_one",
                 title="A sack beneath the boards",
                 description=(
-                    "Your **{approach}** uncovers a ration sack half-hidden beneath warped planks. "
-                    "Two desperate souls notice it at the same time you do. What do you do?"
+                    "A ration sack shows under warped planks just as your hand reaches for it. "
+                    "Two other hungry souls see it in the same breath. Nobody speaks. Nobody needs to."
                 ),
                 options=(
                     _option(
@@ -517,7 +522,8 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                 key="step_one",
                 title="A whisper worth acting on",
                 description=(
-                    "During **{approach}**, a frayed washline conversation turns serious: someone swears a weak hollow is circling a nearby block while a gang plans to profit from the panic."
+                    "A washline whisper turns sharp halfway through **{approach}**. "
+                    "A weak hollow is drifting near a nearby block, and a gang means to make coin off the fear before dawn."
                 ),
                 options=(
                     _option(
@@ -574,7 +580,8 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                 key="step_one",
                 title="A shriek in the plaster",
                 description=(
-                    "The end of **{approach}** brings you to a cracked wall where a weak hollow is testing the edge of the block and the nerves of everyone hiding nearby."
+                    "Near the end of **{approach}**, a cracked wall shudders with a thin, ugly shriek. "
+                    "A weak hollow is probing the edge of the block, and everybody hiding nearby knows what happens if nobody answers it."
                 ),
                 options=(
                     _option(
@@ -637,7 +644,8 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                 key="step_one",
                 title="The collector arrives",
                 description=(
-                    "Your **{approach}** carries you to the market edge just as a gang collector corners a vendor with nothing left to give. The whole block is watching without wanting to be seen."
+                    "Your **{approach}** reaches the market edge at the worst moment. "
+                    "A gang collector has a vendor trapped by the stall, and the whole stretch is pretending not to look while listening to every word."
                 ),
                 options=(
                     _option(key="shadow", label="Shadow the collector", style="primary", next_step_id="shadow_step"),
@@ -661,7 +669,8 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                 key="shadow_step",
                 title="You have their trail",
                 description=(
-                    "You slip behind the collector through broken alleys and stacked crates. One wrong move and the tail is over. One right move and you might learn where the extorted scraps are going."
+                    "You fall in behind the collector through broken alleys and stacks of split crates. "
+                    "One careless sound ends the tail. One clean read might show you where the stolen scraps keep disappearing."
                 ),
                 options=(
                     _option(
@@ -699,7 +708,8 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                 key="vendor_step",
                 title="Now the street is looking at you",
                 description=(
-                    "You step in for the vendor and the whole scene tightens. The crowd is scared, but not gone. If you play this right, the collector loses the room. If you play it wrong, it turns bloody."
+                    "The second you step in, the air changes. "
+                    "The crowd is still scared, but now it is watching you to decide whether this becomes courage or blood."
                 ),
                 options=(
                     _option(
@@ -745,7 +755,8 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                 key="step_one",
                 title="Someone is calling for help",
                 description=(
-                    "At the tail end of **{approach}**, a cry for help cuts through the alley maze. It could be real. It could be bait. In Rukongai, it is often both."
+                    "A cry for help cuts through the alley maze at the tail end of **{approach}**. "
+                    "It sounds thin, frightened, and maybe a little too well placed. In Rukongai, that usually means trouble either way."
                 ),
                 options=(
                     _option(key="investigate", label="Investigate", style="primary", next_step_id="investigate_step"),
@@ -769,7 +780,8 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                 key="investigate_step",
                 title="It was a trap, but not only a trap",
                 description=(
-                    "You step in and find both a wounded soul and shadows closing in. There is still time to choose what matters most."
+                    "You step in and find a wounded soul slumped against the wall just as shadows start to close. "
+                    "The trap is real. So is the person caught in it."
                 ),
                 options=(
                     _option(
@@ -807,7 +819,8 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                 key="watch_step",
                 title="The pattern becomes clear",
                 description=(
-                    "From cover, you spot the bait, the watchers, and the route they expect their victims to take. Now you can either hit the pattern or slip away with what you learned."
+                    "From cover, the whole setup finally shows itself: the bait, the watchers, the lane they want their victim to stumble into. "
+                    "Now that you see the shape of it, you either break it or carry the knowledge away."
                 ),
                 options=(
                     _option(
@@ -848,19 +861,22 @@ RUKONGAI_STREETS_SPECIAL_OFFERS = (
     ExplorationEventTemplate(
         title="A Hidden Pull in the District",
         description=(
-            "Just as your run seems settled, **{approach}** turns up something unusual: a buried spiritual pull and the promise of a better score if you press your luck."
+            "Just when the run feels finished, **{approach}** catches on something odd. "
+            "A buried spiritual pull. A hidden pocket. The kind of chance that usually costs more than it gives."
         ),
     ),
     ExplorationEventTemplate(
         title="A Rare Opening",
         description=(
-            "The streets shift after **{approach}**, revealing a narrow chance most souls would miss. It smells like reward, danger, or both."
+            "The streets shift around **{approach}** and, for one narrow second, something opens that should have stayed hidden. "
+            "It smells like hunger, luck, and bad judgment all at once."
         ),
     ),
     ExplorationEventTemplate(
         title="Something Valuable Stirs",
         description=(
-            "Your **{approach}** uncovers a strange lead that could turn tonight into more than survival. Taking it will cost you more strength."
+            "Your **{approach}** turns up a lead with real weight behind it. "
+            "Not rumor. Not wishful thinking. Something worth chasing, if you are willing to pay for it up front."
         ),
     ),
 )
@@ -876,7 +892,8 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                 key="step_one",
                 title="The opening is real, but unstable",
                 description=(
-                    "You force your way into the hidden pocket and find a cramped stash site under cracked stone. The cache is real, but the noise has already started to draw eyes."
+                    "You force your way into the hidden pocket and find a cramped cache under cracked stone. "
+                    "It is real. So is the noise you're making, and out here noise is just another way of inviting company."
                 ),
                 options=(
                     _option(
@@ -935,7 +952,8 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                 key="step_one",
                 title="The reiatsu trail leads to a nest",
                 description=(
-                    "The unusual pull resolves into a weak hollow nest hidden behind wrecked walls. There is value here, but disturbing it will turn the whole space violent."
+                    "The strange pull resolves behind a line of wrecked walls, where weak hollows have been nesting in the dark. "
+                    "There is value here, but the whole place feels one bad move away from erupting."
                 ),
                 options=(
                     _option(
@@ -994,7 +1012,8 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                 key="step_one",
                 title="You found the handoff lane",
                 description=(
-                    "The rare lead opens onto a courier lane used by local gangs to move food, scraps, and stolen comforts. One bold move could pay out twice as hard as a normal run."
+                    "The lead opens onto a handoff lane where local gangs move food, scrap, and every other stolen comfort worth guarding. "
+                    "One bold move here could feed you for days, or get your name dragged through every block nearby."
                 ),
                 options=(
                     _option(
