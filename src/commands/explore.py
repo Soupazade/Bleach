@@ -21,6 +21,7 @@ from src.ui.explore_view import (
     build_explore_pending_embed,
     build_explore_resolution_posted_embed,
     build_explore_resting_embed,
+    build_explore_wrong_location_embed,
 )
 from src.ui.exploration_combat_view import build_active_combat_embed
 
@@ -43,6 +44,13 @@ def register_explore_command(bot: "BleachBot") -> None:
         if player is None:
             await interaction.response.send_message(
                 "You don't have a profile yet. Use /start first.",
+                ephemeral=True,
+            )
+            return
+
+        if interaction.channel_id != player.location_data.room_id:
+            await interaction.response.send_message(
+                embed=build_explore_wrong_location_embed(player),
                 ephemeral=True,
             )
             return

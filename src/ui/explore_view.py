@@ -218,6 +218,29 @@ def build_explore_missing_profile_embed() -> discord.Embed:
     return embed
 
 
+def build_explore_wrong_location_embed(player: PlayerProfile) -> discord.Embed:
+    location = player.location_data
+    embed = discord.Embed(
+        title="🧭 Wrong District",
+        description=(
+            "The streets do not answer from the wrong corner of the world. "
+            "If you want to explore, step into the district where your soul is actually standing."
+        ),
+        color=get_explore_color("combat"),
+    )
+    embed.add_field(
+        name="Current State",
+        value=build_explore_info_lines(
+            f"📍 Your Location: {location.name}",
+            f"🕓 Correct Room: <#{location.room_id}>",
+        ),
+        inline=False,
+    )
+    add_explore_divider(embed)
+    embed.set_footer(text="Explore where your feet actually are.")
+    return embed
+
+
 class ExploreSelect(discord.ui.Select["ExploreView"]):
     def __init__(self, approaches: tuple[ExploreApproachDefinition, ...]) -> None:
         super().__init__(
