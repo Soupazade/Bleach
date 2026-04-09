@@ -1156,7 +1156,6 @@ def get_random_explore_options_for_location(
                 random.choice(duration_buckets[duration])
                 for duration in required_durations
             ]
-            random.shuffle(selected)
             return tuple(selected)
 
     sample_size = min(count, len(approach_pool))
