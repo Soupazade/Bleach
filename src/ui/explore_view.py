@@ -68,7 +68,7 @@ def build_explore_started_embed(
     embed = discord.Embed(
         title="You Slip Into the District",
         description=(
-            f"You slip into **{approach.label}** in **{location.name}**.\n"
+            f"You make your move in **{location.name}**.\n"
             f"{approach.intro_text}"
         ),
         color=discord.Color.from_rgb(109, 142, 196),
@@ -76,6 +76,7 @@ def build_explore_started_embed(
     embed.add_field(
         name="Timing",
         value=(
+            f"Approach: **{approach.label}**\n"
             f"It Wraps In: **{approach.duration_label}**\n"
             f"Ends: {discord.utils.format_dt(exploration.end_time, 'R')}"
         ),
