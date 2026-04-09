@@ -50,9 +50,6 @@ ACTIVE_EXPLORATION_COMBAT_COLUMNS = """
     updated_at
 """
 
-MAX_COMBAT_ROUNDS = 4
-
-
 @dataclass(slots=True)
 class CombatOutcome:
     combat: ActiveExplorationCombat
@@ -327,14 +324,6 @@ def _build_retreat_description(combat: ActiveExplorationCombat) -> str:
     )
 
 
-def _build_attrition_summary(combat: ActiveExplorationCombat) -> str:
-    player_ratio = combat.player_hp_current / max(1, combat.player_hp_max)
-    enemy_ratio = combat.enemy_hp_current / max(1, combat.enemy_hp_max)
-    if enemy_ratio <= player_ratio:
-        return "Four hard exchanges pass and the enemy cracks first."
-    return "Four hard exchanges pass and the fight keeps leaning away from you."
-
-
 def _resolve_outcome(
     combat: ActiveExplorationCombat,
     *,
@@ -410,11 +399,6 @@ def advance_combat_state(
             guard_active=False,
         )
         if player_hp <= 0:
-            return CombatAdvanceResult(
-                status="resolved",
-                outcome=_resolve_outcome(updated_combat, combat_outcome="Setback", round_summary=" ".join(round_summary_parts)),
-            )
-        if updated_round > MAX_COMBAT_ROUNDS:
             return CombatAdvanceResult(
                 status="resolved",
                 outcome=_resolve_outcome(updated_combat, combat_outcome="Setback", round_summary=" ".join(round_summary_parts)),
@@ -522,16 +506,5 @@ def advance_combat_state(
         round_number=updated_round,
         last_round_summary=" ".join(round_summary_parts),
     )
-
-    if updated_round > MAX_COMBAT_ROUNDS:
-        round_summary = f"{' '.join(round_summary_parts)} {_build_attrition_summary(updated_combat)}".strip()
-        player_ratio = updated_combat.player_hp_current / max(1, updated_combat.player_hp_max)
-        enemy_ratio = updated_combat.enemy_hp_current / max(1, updated_combat.enemy_hp_max)
-        combat_outcome: Literal["Victory", "Setback"] = "Victory" if enemy_ratio <= player_ratio else "Setback"
-        updated_combat = replace(updated_combat, last_round_summary=round_summary)
-        return CombatAdvanceResult(
-            status="resolved",
-            outcome=_resolve_outcome(updated_combat, combat_outcome=combat_outcome, round_summary=round_summary),
-        )
 
     return CombatAdvanceResult(status="updated", combat=updated_combat)

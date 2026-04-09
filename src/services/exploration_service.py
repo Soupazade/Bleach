@@ -59,7 +59,7 @@ from src.services.reputation_service import (
     get_location_reputation_value,
     get_reputation_modifiers,
 )
-from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines
+from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 
 if TYPE_CHECKING:
     from src.main import BleachBot

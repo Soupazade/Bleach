@@ -37,7 +37,7 @@ def build_exploration_combat_embed(combat: "ActiveExplorationCombat") -> discord
     embed.add_field(
         name="Current State",
         value=build_explore_info_lines(
-            f"⚔ Round: **{combat.round_number}/4**",
+            f"⚔ Round: **{combat.round_number}**",
             f"🌀 Focus Bonus: **+{combat.focus_bonus}**",
             f"🗡 Last Exchange: {combat.last_round_summary}",
         ),
@@ -73,7 +73,7 @@ def build_active_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embe
         name="Current State",
         value=build_explore_info_lines(
             f"⚔ Enemy: **{combat.enemy_name}**",
-            f"⏱ Round: **{combat.round_number}/4**",
+            f"⏱ Round: **{combat.round_number}**",
             f"❤️ Your HP: **{combat.player_hp_current}/{combat.player_hp_max}**",
             f"❤️ Enemy HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**",
         ),

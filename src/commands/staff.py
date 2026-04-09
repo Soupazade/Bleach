@@ -165,7 +165,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
             value=(
                 f"Encounter: **{active_combat.encounter_title}**\n"
                 f"Enemy: **{active_combat.enemy_name}**\n"
-                f"Round: **{active_combat.round_number}/4**\n"
+                f"Round: **{active_combat.round_number}**\n"
                 f"Player HP: **{active_combat.player_hp_current}/{active_combat.player_hp_max}**\n"
                 f"Enemy HP: **{active_combat.enemy_hp_current}/{active_combat.enemy_hp_max}**\n"
                 f"Channel: <#{active_combat.channel_id}>\n"
