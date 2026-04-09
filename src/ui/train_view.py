@@ -63,15 +63,16 @@ def build_training_menu_embed(
 ) -> discord.Embed:
     location = player.location_data
     reputation_title = get_location_reputation_title(player, player.location)
-
     focus_text = "Choose a focus below."
     duration_text = "Choose how long you want to train."
     reward_text = "A full plan will show up once both choices are locked in."
     cost_text = "Stamina cost will appear once your session is set."
-
+    description = (
+        "Pick your focus, lock in the length of the session, and then commit. "
+        "The yard only respects choices you actually follow through on."
+    )
     if selected_focus is not None:
         focus_text = get_training_focus_label(selected_focus)
-
     if selected_focus is not None and selected_duration is not None:
         reward_text = format_training_reward_lines(
             get_training_full_reward(selected_focus, selected_duration)
@@ -86,36 +87,46 @@ def build_training_menu_embed(
             stamina_modifier,
             reputation_title,
         )
-
+        description = "Your plan is set. One more press and the training begins for real."
     embed = discord.Embed(
-        title=f"🏋 {location.name} — Training",
-        description=(
-            "You square yourself up in the yard and choose what kind of pain you want to earn today."
-        ),
+        title=f"\U0001f3cb {location.name} \u2014 Training Setup",
+        description=description,
         color=get_explore_color("explore"),
     )
     embed.add_field(
         name="Current State",
         value=build_explore_info_lines(
-            f"📍 Location: {location.name}",
-            f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
-            f"📈 Level: {player.level}",
-            f"🎭 Reputation: {reputation_title}",
+            f"\U0001f4cd Location: {location.name}",
+            f"\u26a1 Stamina: {player.stamina_current}/{player.stamina_max}",
+            f"\U0001f4c8 Level: {player.level}",
+            f"\U0001f3ad Reputation: {reputation_title}",
         ),
         inline=False,
     )
     embed.add_field(
-        name="Training Plan",
+        name="Selected Plan",
         value=build_explore_info_lines(
-            f"🎯 Focus: {focus_text}",
-            f"⏱ Duration: {duration_text}",
-            f"📈 Reward: {reward_text}",
-            f"⚡ Cost: {cost_text}",
+            f"\u2705 Focus: {focus_text}" if selected_focus is not None else f"\u2b1c Focus: {focus_text}",
+            f"\u2705 Duration: {duration_text}" if selected_duration is not None else f"\u2b1c Duration: {duration_text}",
         ),
         inline=False,
     )
+    embed.add_field(
+        name="Projected Gains",
+        value=build_explore_info_lines(
+            f"\U0001f4c8 Reward: {reward_text}",
+            f"\u26a1 Cost: {cost_text}",
+        ),
+        inline=False,
+    )
+    if selected_focus is not None and selected_duration is not None:
+        embed.add_field(
+            name="Ready",
+            value="Press **Start Training** to lock in this session and spend the stamina now.",
+            inline=False,
+        )
     add_explore_divider(embed)
-    embed.set_footer(text="The yard gives back only what you drag out of it.")
+    embed.set_footer(text="Make the choice first. The pain comes after.")
     return embed
 
 
@@ -127,41 +138,41 @@ def build_training_started_embed(
 ) -> discord.Embed:
     reputation_title = get_location_reputation_title(player, player.location)
     stamina_modifier = training.stamina_cost - base_stamina_cost
-
     embed = discord.Embed(
-        title="🏋 Training Yard — Training Started",
+        title="\u2705 Training Underway \u2014 Rukongai Training Yard",
         description=(
-            "You commit yourself to focused training in the yard. Every minute hurts, but that is the point."
+            "The plan is locked in. Stamina is spent, the session is live, and now the yard gets to see whether you meant it."
         ),
-        color=get_explore_color("explore"),
+        color=get_explore_color("reward"),
     )
     embed.add_field(
-        name="Training Plan",
+        name="Locked In",
         value=build_explore_info_lines(
-            f"🎯 Focus: {get_training_focus_label(training.stat_target)}",
-            f"⏱ Duration: {training.duration_minutes} minutes",
-            f"📈 Reward: {format_training_reward_lines(get_training_full_reward(training.stat_target, training.duration_minutes))}",
+            f"\U0001f3af Focus: {get_training_focus_label(training.stat_target)}",
+            f"\u23f1 Duration: {training.duration_minutes} minutes",
+            f"\U0001f4c8 Reward: {format_training_reward_lines(get_training_full_reward(training.stat_target, training.duration_minutes))}",
         ),
         inline=False,
     )
     embed.add_field(
         name="Cost",
         value=build_explore_info_lines(
-            f"⚡ Stamina Cost: {format_reputation_stamina_text(training.stamina_cost, stamina_modifier, reputation_title)}",
-            f"⚡ Stamina After Cost: {player.stamina_current}/{player.stamina_max}",
+            f"\u26a1 Stamina Cost: {format_reputation_stamina_text(training.stamina_cost, stamina_modifier, reputation_title)}",
+            f"\u26a1 Stamina After Cost: {player.stamina_current}/{player.stamina_max}",
         ),
         inline=True,
     )
     embed.add_field(
         name="Status",
         value=build_explore_info_lines(
-            "Training is now in progress.",
-            "Passive stamina regeneration is paused until the session ends.",
+            "\u2705 Training is active now.",
+            "\u23f3 The completion result will post here when the session ends.",
+            "\u26a1 Passive stamina regeneration is paused until then.",
         ),
         inline=True,
     )
     add_explore_divider(embed)
-    embed.set_footer(text="When the session ends, the yard will show what it took and what it gave back.")
+    embed.set_footer(text="The session has started. The yard is watching now.")
     return embed
 
 
@@ -391,7 +402,7 @@ class StartTrainingButton(discord.ui.Button["TrainingSetupView"]):
     def __init__(self) -> None:
         super().__init__(
             label="Start Training",
-            style=discord.ButtonStyle.primary,
+            style=discord.ButtonStyle.secondary,
             disabled=True,
         )
 
@@ -439,10 +450,29 @@ class TrainingSetupView(discord.ui.View):
             if not is_valid_training_selection(self.selected_focus, self.selected_duration):
                 self.selected_duration = None
 
-        self.start_button.disabled = not (
+        is_ready = (
             self.selected_focus is not None
             and self.selected_duration is not None
             and is_valid_training_selection(self.selected_focus, self.selected_duration)
+        )
+        self.start_button.disabled = not is_ready
+        self.start_button.style = (
+            discord.ButtonStyle.success if is_ready else discord.ButtonStyle.secondary
+        )
+        self.focus_select.placeholder = (
+            f"Focus: {get_training_focus_label(self.selected_focus)}"
+            if self.selected_focus is not None
+            else "Choose a training focus"
+        )
+        self.duration_select.placeholder = (
+            f"Duration: {self.selected_duration} minutes"
+            if self.selected_duration is not None
+            else "Choose a duration"
+        )
+        self.start_button.label = (
+            f"Start {self.selected_duration}m {get_training_focus_label(self.selected_focus)}"
+            if is_ready
+            else "Start Training"
         )
 
     async def set_focus(self, interaction: discord.Interaction, focus_key: str) -> None:
@@ -800,4 +830,3 @@ class TrainingInterruptView(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass
-
