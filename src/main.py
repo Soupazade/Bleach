@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from src.commands import register_commands
 from src.database import create_pool, ensure_schema
 from src.services.exploration_service import restore_exploration_tasks
+from src.services.travel_service import restore_travel_tasks
 from src.ui.exploration_combat_view import ExplorationCombatView
 from src.ui.exploration_choice_view import ExplorationChoiceView
 
@@ -37,6 +38,7 @@ class BleachBot(discord.Client):
         self.guild_id = self._parse_guild_id()
         self.tree = app_commands.CommandTree(self)
         self.exploration_tasks: dict[int, asyncio.Task] = {}
+        self.travel_tasks: dict[int, asyncio.Task] = {}
         self.recent_combat_resolutions: dict[int, object] = {}
         register_commands(self)
 
@@ -57,6 +59,7 @@ class BleachBot(discord.Client):
         self.add_view(ExplorationChoiceView(self))
         self.add_view(ExplorationCombatView(self))
         await restore_exploration_tasks(self)
+        await restore_travel_tasks(self)
 
         if self.guild_id is not None:
             guild = discord.Object(id=self.guild_id)
@@ -76,8 +79,11 @@ class BleachBot(discord.Client):
     async def close(self) -> None:
         for task in self.exploration_tasks.values():
             task.cancel()
+        for task in self.travel_tasks.values():
+            task.cancel()
 
         self.exploration_tasks.clear()
+        self.travel_tasks.clear()
         if self.db_pool is not None:
             await self.db_pool.close()
         await super().close()

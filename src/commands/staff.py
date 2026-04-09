@@ -11,7 +11,9 @@ from src.data.locations import LOCATIONS, get_location_definition
 from src.data.traits import SOUL_TRAITS, get_trait_definition
 from src.services.exploration_service import get_exploration_remaining_time, resolve_and_post_exploration
 from src.services.formulas import get_xp_required_for_level
+from src.services.location_service import format_location_room_reference
 from src.services.role_service import remove_player_roles, sync_member_location_role
+from src.services.travel_service import get_travel_remaining_time
 from src.services.staff_service import (
     delete_player_profile,
     give_player_xp,
@@ -60,6 +62,15 @@ def _cancel_player_exploration_task(bot: "BleachBot", user_id: int) -> bool:
     return True
 
 
+def _cancel_player_travel_task(bot: "BleachBot", user_id: int) -> bool:
+    task = bot.travel_tasks.pop(user_id, None)
+    if task is None:
+        return False
+
+    task.cancel()
+    return True
+
+
 def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_state) -> discord.Embed:
     profile = debug_state.player
     location = profile.location_data
@@ -67,6 +78,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
     active_exploration = debug_state.active_exploration
     pending_choice = debug_state.pending_choice
     active_combat = debug_state.active_combat
+    active_travel = debug_state.active_travel
 
     embed = discord.Embed(
         title="Player State",
@@ -159,6 +171,20 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
         exploration_value = "Exploration timer is clear. Only the active combat state remains."
     embed.add_field(name="Exploration", value=exploration_value, inline=False)
 
+    if active_travel is not None:
+        embed.add_field(
+            name="Travel",
+            value=(
+                f"From: **{get_location_definition(active_travel.source_location).name}**\n"
+                f"To: **{get_location_definition(active_travel.destination_location).name}**\n"
+                f"Channel: <#{active_travel.channel_id}>\n"
+                f"End: **{discord.utils.format_dt(active_travel.end_time, 'R')}**\n"
+                f"Remaining: **{get_travel_remaining_time(active_travel)}**\n"
+                f"Task Tracked: **{'Yes' if active_travel.user_id in bot.travel_tasks else 'No'}**"
+            ),
+            inline=False,
+        )
+
     if active_combat is not None:
         embed.add_field(
             name="Combat",
@@ -216,6 +242,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         cancelled_task = _cancel_player_exploration_task(bot, player.id)
+        cancelled_travel_task = _cancel_player_travel_task(bot, player.id)
         deleted_profile = await delete_player_profile(bot.db_pool, player.id)
         role_summary, role_warning = await remove_player_roles(
             player,
@@ -234,7 +261,12 @@ def register_staff_commands(bot: "BleachBot") -> None:
         embed.add_field(name="Profile Deleted", value="Yes" if deleted_profile else "No", inline=True)
         embed.add_field(
             name="Exploration Task Cancelled",
-            value="Yes" if cancelled_task else "No active task",
+            value="Yes" if cancelled_task else "No active exploration task",
+            inline=True,
+        )
+        embed.add_field(
+            name="Travel Task Cancelled",
+            value="Yes" if cancelled_travel_task else "No active travel task",
             inline=True,
         )
         if role_summary is not None:
@@ -441,6 +473,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         cancelled_task = _cancel_player_exploration_task(bot, player.id)
+        cancelled_travel_task = _cancel_player_travel_task(bot, player.id)
         result = await reset_player_action_timers(bot.db_pool, player.id)
         if result is None:
             await interaction.response.send_message(
@@ -470,15 +503,16 @@ def register_staff_commands(bot: "BleachBot") -> None:
             inline=True,
         )
         embed.add_field(
+            name="Travel Cleared",
+            value="Yes" if result.cleared_travel or cancelled_travel_task else "No",
+            inline=True,
+        )
+        embed.add_field(
             name="Rest Cleared",
             value="Yes" if result.cleared_resting else "No",
             inline=True,
         )
-        embed.add_field(
-            name="Current Stamina",
-            value=f"**{result.player.stamina_current}/{result.player.stamina_max}**",
-            inline=True,
-        )
+        embed.add_field(name="Current Stamina", value=f"**{result.player.stamina_current}/{result.player.stamina_max}**", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="setlocation", description="Move a player to a new location and sync their location role.")
@@ -505,7 +539,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
         location_data = get_location_definition(updated_player.location)
         role_summary, role_warning = await sync_member_location_role(
             player,
-            location_data.role_id,
+            location_data,
             reason=f"Location updated by {interaction.user}",
         )
 
@@ -515,7 +549,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             color=discord.Color.blurple(),
         )
         embed.add_field(name="Location", value=f"**{location_data.name}**", inline=True)
-        embed.add_field(name="Room", value=f"<#{location_data.room_id}>", inline=True)
+        embed.add_field(name="Room", value=format_location_room_reference(location_data), inline=True)
         if role_summary is not None:
             embed.add_field(name="Role Update", value=role_summary, inline=False)
         if role_warning is not None:

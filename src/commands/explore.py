@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 
 from src.data.exploration import get_random_explore_options_for_location
+from src.services.location_service import channel_matches_location
 from src.services.combat_service import get_active_exploration_combat
 from src.services.exploration_service import (
     get_active_exploration,
@@ -14,6 +15,7 @@ from src.services.exploration_service import (
     resolve_and_post_exploration,
 )
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
+from src.services.travel_service import get_active_travel, resolve_and_post_travel
 from src.ui.explore_view import (
     ExploreView,
     build_explore_active_embed,
@@ -24,6 +26,11 @@ from src.ui.explore_view import (
     build_explore_wrong_location_embed,
 )
 from src.ui.exploration_combat_view import build_active_combat_embed
+from src.ui.travel_view import (
+    build_travel_active_embed,
+    build_travel_blocked_embed,
+    build_travel_resolution_posted_embed,
+)
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -46,7 +53,7 @@ def register_explore_command(bot: "BleachBot") -> None:
             )
             return
 
-        if interaction.channel_id != player.location_data.room_id:
+        if not channel_matches_location(player.location_data, interaction.channel):
             await interaction.response.send_message(
                 embed=build_explore_wrong_location_embed(player),
             )
@@ -78,8 +85,32 @@ def register_explore_command(bot: "BleachBot") -> None:
             )
             return
 
-        active_exploration = await get_active_exploration(bot.db_pool, interaction.user.id)
         now = datetime.now(timezone.utc)
+        active_travel = await get_active_travel(bot.db_pool, interaction.user.id)
+        if active_travel is not None:
+            if active_travel.end_time > now:
+                await interaction.response.send_message(
+                    embed=build_travel_active_embed(player, active_travel),
+                )
+                return
+
+            resolution = await resolve_and_post_travel(bot, interaction.user.id)
+            if resolution is None:
+                await interaction.response.send_message(
+                    embed=build_travel_blocked_embed(
+                        "🧭 Travel Is Still Tangled",
+                        "The road should have been done with you by now, but I could not settle the arrival cleanly just yet.",
+                        kind="combat",
+                    ),
+                )
+                return
+
+            await interaction.response.send_message(
+                embed=build_travel_resolution_posted_embed(),
+            )
+            return
+
+        active_exploration = await get_active_exploration(bot.db_pool, interaction.user.id)
         if active_exploration is not None:
             if active_exploration.end_time > now:
                 await interaction.response.send_message(

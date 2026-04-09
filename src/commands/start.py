@@ -7,6 +7,7 @@ from discord import app_commands
 
 from src.data.game_constants import SOUL_ROLE_ID
 from src.models.player import PlayerProfile
+from src.services.location_service import format_location_room_reference, resolve_location_role
 from src.services.player_service import create_player_profile
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ def build_start_embed(
     )
     embed.add_field(
         name="Spawn Location",
-        value=f"**{location.name}**\nRoom: <#{location.room_id}>",
+        value=f"**{location.name}**\nRoom: {format_location_room_reference(location)}",
         inline=False,
     )
 
@@ -77,14 +78,14 @@ def build_start_embed(
 
 async def assign_starting_roles(
     member: discord.Member,
-    location_role_id: int,
+    location,
 ) -> tuple[str | None, str | None]:
     roles_to_add: list[discord.Role] = []
     pending_role_names: list[str] = []
     warnings: list[str] = []
 
     soul_role = member.guild.get_role(SOUL_ROLE_ID)
-    location_role = member.guild.get_role(location_role_id)
+    location_role = resolve_location_role(member.guild, location)
 
     if soul_role is None:
         warnings.append("Soul role was not found in this guild.")
@@ -161,7 +162,7 @@ def register_start_command(bot: "BleachBot") -> None:
         if created:
             role_summary, role_warning = await assign_starting_roles(
                 member,
-                profile.location_data.role_id,
+                profile.location_data,
             )
 
         embed = build_start_embed(

@@ -10,6 +10,7 @@ from src.data.traits import get_trait_definition
 from src.models.combat import ActiveExplorationCombat
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
+from src.models.travel import ActiveTravel
 from src.services.combat_service import (
     delete_active_exploration_combat,
     fetch_active_combat_record,
@@ -22,6 +23,11 @@ from src.services.exploration_service import (
     fetch_pending_choice_record,
     get_active_exploration,
     get_pending_exploration_choice,
+)
+from src.services.travel_service import (
+    delete_active_travel,
+    fetch_active_travel_record,
+    get_active_travel,
 )
 from src.services.formulas import apply_experience_gain
 from src.services.player_service import (
@@ -38,6 +44,7 @@ class CooldownResetResult:
     cleared_exploration: bool
     cleared_choice: bool
     cleared_combat: bool
+    cleared_travel: bool
     cleared_resting: bool
 
 
@@ -47,6 +54,7 @@ class PlayerDebugState:
     active_exploration: ActiveExploration | None
     pending_choice: PendingExplorationChoice | None
     active_combat: ActiveExplorationCombat | None
+    active_travel: ActiveTravel | None
     rest_minutes: int
     projected_rest_recovery: int
 
@@ -282,6 +290,11 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
             if cleared_combat:
                 await delete_active_exploration_combat(connection, user_id)
 
+            travel_record = await fetch_active_travel_record(connection, user_id, for_update=True)
+            cleared_travel = travel_record is not None
+            if cleared_travel:
+                await delete_active_travel(connection, user_id)
+
             cleared_resting = bool(record["is_resting"])
             updated_record = record
             if cleared_resting:
@@ -301,6 +314,7 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
         cleared_exploration=cleared_exploration,
         cleared_choice=cleared_choice,
         cleared_combat=cleared_combat,
+        cleared_travel=cleared_travel,
         cleared_resting=cleared_resting,
     )
 
@@ -316,12 +330,14 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
     active_exploration = await get_active_exploration(pool, user_id)
     pending_choice = await get_pending_exploration_choice(pool, user_id)
     active_combat = await get_active_exploration_combat(pool, user_id)
+    active_travel = await get_active_travel(pool, user_id)
     rest_minutes, projected_rest_recovery = get_rest_status(player)
     return PlayerDebugState(
         player=player,
         active_exploration=active_exploration,
         pending_choice=pending_choice,
         active_combat=active_combat,
+        active_travel=active_travel,
         rest_minutes=rest_minutes,
         projected_rest_recovery=projected_rest_recovery,
     )

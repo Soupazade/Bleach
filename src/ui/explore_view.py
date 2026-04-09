@@ -8,6 +8,7 @@ from src.data.exploration import ExploreApproachDefinition, get_explore_approach
 from src.data.locations import get_location_definition
 from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
+from src.services.location_service import format_location_room_reference
 from src.services.exploration_service import (
     get_exploration_remaining_time,
     resolve_and_post_exploration,
@@ -232,7 +233,7 @@ def build_explore_wrong_location_embed(player: PlayerProfile) -> discord.Embed:
         name="Current State",
         value=build_explore_info_lines(
             f"📍 Your Location: {location.name}",
-            f"🕓 Correct Room: <#{location.room_id}>",
+            f"🕓 Correct Room: {format_location_room_reference(location)}",
         ),
         inline=False,
     )

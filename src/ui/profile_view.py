@@ -12,6 +12,7 @@ from src.services.formulas import (
     calculate_effective_stamina_max,
     get_xp_required_for_level,
 )
+from src.services.location_service import format_location_room_reference
 from src.services.player_service import get_player_profile, get_rest_status
 from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
@@ -158,7 +159,7 @@ def build_profile_embed(
 ) -> discord.Embed:
     trait = player.trait_data
     location = player.location_data
-    room_mention = f"<#{location.room_id}>"
+    room_mention = format_location_room_reference(location)
     rest_minutes, recovered_stamina = get_rest_status(player)
     status_value = "Resting" if player.is_resting else "Available"
     reputation_label = get_location_reputation_label(player.location)

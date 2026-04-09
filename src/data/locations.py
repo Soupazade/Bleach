@@ -5,8 +5,10 @@ from dataclasses import dataclass
 class LocationDefinition:
     key: str
     name: str
-    room_id: int
-    role_id: int
+    room_id: int | None = None
+    role_id: int | None = None
+    room_name: str | None = None
+    role_name: str | None = None
 
 
 RUKONGAI_STREETS = LocationDefinition(
@@ -14,10 +16,36 @@ RUKONGAI_STREETS = LocationDefinition(
     name="Rukongai Streets",
     room_id=1491604332594860032,
     role_id=1491603816590872606,
+    room_name="rukongai-streets",
+    role_name="Rukongai Streets",
+)
+
+RUKONGAI_MARKET = LocationDefinition(
+    key="rukongai_market",
+    name="Rukongai Market",
+    room_name="rukongai-market",
+    role_name="Rukongai Market",
+)
+
+RUKONGAI_OUTSKIRTS = LocationDefinition(
+    key="rukongai_outskirts",
+    name="Rukongai Outskirts",
+    room_name="rukongai-outskirts",
+    role_name="Rukongai Outskirts",
+)
+
+RUKONGAI_TRAINING_YARD = LocationDefinition(
+    key="rukongai_training_yard",
+    name="Rukongai Training Yard",
+    room_name="rukongai-training-yard",
+    role_name="Rukongai Training Yard",
 )
 
 LOCATIONS = {
     RUKONGAI_STREETS.key: RUKONGAI_STREETS,
+    RUKONGAI_MARKET.key: RUKONGAI_MARKET,
+    RUKONGAI_OUTSKIRTS.key: RUKONGAI_OUTSKIRTS,
+    RUKONGAI_TRAINING_YARD.key: RUKONGAI_TRAINING_YARD,
 }
 
 
