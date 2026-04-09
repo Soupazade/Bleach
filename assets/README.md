@@ -1,4 +1,4 @@
-# Assist Assets
+# Assets
 
 Use this folder for reference material that helps build scenes, UI, events, and flavor.
 
