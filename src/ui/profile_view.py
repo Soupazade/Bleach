@@ -10,37 +10,145 @@ from src.services.formulas import (
     calculate_effective_mana_max,
     calculate_effective_speed,
     calculate_effective_stamina_max,
+    get_xp_required_for_level,
 )
 from src.services.player_service import get_player_profile, get_rest_status
 from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
+from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 
 PROFILE_PAGE_OPTIONS = (
     {
         "label": "Overview",
         "value": "overview",
         "description": "General character overview",
+        "emoji": "📘",
     },
     {
         "label": "Stats",
         "value": "stats",
         "description": "Core and derived stats",
+        "emoji": "📈",
     },
     {
         "label": "Formulas",
         "value": "formulas",
         "description": "See calculated values",
+        "emoji": "📙",
     },
     {
         "label": "Trait",
         "value": "trait",
         "description": "Inspect your Soul Trait",
+        "emoji": "🎭",
     },
     {
         "label": "Progression",
         "value": "progression",
         "description": "Level, rank, and timeline info",
+        "emoji": "📜",
     },
 )
+
+PROFILE_PAGE_META = {
+    "overview": {
+        "title": "📘 Soul Record — Overview",
+        "color": "explore",
+        "footer": "The archive remembers the shape of your soul.",
+    },
+    "stats": {
+        "title": "📈 Soul Record — Stats",
+        "color": "explore",
+        "footer": "Every scar, sprint, and clash leaves weight on the soul.",
+    },
+    "formulas": {
+        "title": "📙 Soul Record — Formulas",
+        "color": "flavor",
+        "footer": "Simple readings now. Room to grow later.",
+    },
+    "trait": {
+        "title": "🎭 Soul Trait — Hidden Edge",
+        "color": "special",
+        "footer": "Some edges are born with the soul before a blade is ever drawn.",
+    },
+    "progression": {
+        "title": "📜 Soul Record — Progression",
+        "color": "explore",
+        "footer": "Rukongai remembers who rises and who disappears.",
+    },
+}
+
+
+def _build_profile_embed_shell(
+    *,
+    page_key: str,
+    discord_user: discord.abc.User,
+    description: str,
+) -> discord.Embed:
+    page_meta = PROFILE_PAGE_META[page_key]
+    embed = discord.Embed(
+        title=page_meta["title"],
+        description=description,
+        color=get_explore_color(page_meta["color"]),
+    )
+    embed.set_author(
+        name=discord_user.display_name,
+        icon_url=discord_user.display_avatar.url,
+    )
+    embed.set_thumbnail(url=discord_user.display_avatar.url)
+    embed.set_footer(text=page_meta["footer"])
+    return embed
+
+
+def _add_status_field(embed: discord.Embed, player: PlayerProfile) -> None:
+    rest_minutes, recovered_stamina = get_rest_status(player)
+
+    if player.is_resting:
+        embed.add_field(
+            name="Status Effect",
+            value=build_explore_info_lines(
+                "✨ Status: Resting",
+                f"⏱ Resting Since: {rest_minutes} minute(s) ago",
+                f"⚡ Projected Recovery: +{recovered_stamina} stamina",
+            ),
+            inline=False,
+        )
+
+    if player.has_minor_setback:
+        embed.add_field(
+            name="Status Effect",
+            value=build_explore_info_lines(
+                "✨ Minor Setback",
+                (
+                    f"Aftermath: {player.setback_source}"
+                    if player.setback_source
+                    else "Aftermath: A rough clash is still hanging on you."
+                ),
+                "The next systems can hook into this later.",
+            ),
+            inline=False,
+        )
+
+
+def build_profile_missing_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="📘 No Soul Record Found",
+        description="The archive has nothing on you yet. Use `/start` and let the district learn your name.",
+        color=get_explore_color("combat"),
+    )
+    add_explore_divider(embed)
+    embed.set_footer(text="Every soul starts somewhere.")
+    return embed
+
+
+def build_profile_unavailable_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="📘 Soul Record Unavailable",
+        description="The archive is quiet right now. The database connection needs a moment before profiles can open again.",
+        color=get_explore_color("combat"),
+    )
+    add_explore_divider(embed)
+    embed.set_footer(text="Try again when the records settle.")
+    return embed
 
 
 def build_profile_embed(
@@ -56,55 +164,56 @@ def build_profile_embed(
     reputation_label = get_location_reputation_label(player.location)
     reputation_title = get_location_reputation_title(player, player.location)
 
-    embed = discord.Embed(
-        title=f"{discord_user.display_name}'s Soul Record",
-        color=discord.Color.from_rgb(25, 120, 255),
-    )
-    embed.set_thumbnail(url=discord_user.display_avatar.url)
-    embed.set_footer(text="Bleach RPG | Reiryoku Archive")
-
     if page_key == "stats":
-        embed.description = (
-            "Your reiatsu is still young, but every battle, event, and step through Rukongai "
-            "will shape the stats that define your soul."
+        embed = _build_profile_embed_shell(
+            page_key=page_key,
+            discord_user=discord_user,
+            description=(
+                "Nothing in Rukongai comes easy. Every scrap of power on this page is something "
+                "your soul has had to carry for itself."
+            ),
+        )
+        embed.add_field(
+            name="Current State",
+            value=build_explore_info_lines(
+                f"📈 Level: {player.level}",
+                f"🎭 Trait: {trait.name}",
+                f"📍 Location: {location.name}",
+                f"{'✨ Status: Resting' if player.is_resting else '✨ Status: Ready'}",
+            ),
+            inline=True,
         )
         embed.add_field(
             name="Core Stats",
-            value=(
-                f"Power: **{player.power}**\n"
-                f"Defense: **{player.defense}**\n"
-                f"Speed: **{player.speed}**\n"
-                f"Reiatsu: **{player.reiatsu}**"
+            value=build_explore_info_lines(
+                f"Power: **{player.power}**",
+                f"Defense: **{player.defense}**",
+                f"Speed: **{player.speed}**",
+                f"Reiatsu: **{player.reiatsu}**",
             ),
             inline=True,
         )
         embed.add_field(
             name="Resources",
-            value=(
-                f"HP: **{player.hp_current}/{player.hp_max}**\n"
-                f"Stamina: **{player.stamina_current}/{player.stamina_max}**\n"
-                f"Mana: **{player.mana_current}/{player.mana_max}**"
-            ),
-            inline=True,
-        )
-        embed.add_field(
-            name="Derived",
-            value=(
-                f"Spiritual Pressure: **{player.spiritual_pressure}**\n"
-                f"{reputation_label}: **{reputation_title}**"
+            value=build_explore_info_lines(
+                f"❤️ HP: {player.hp_current}/{player.hp_max}",
+                f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
+                f"🔷 Mana: {player.mana_current}/{player.mana_max}",
+                f"📈 Spiritual Pressure: {player.spiritual_pressure}",
             ),
             inline=False,
         )
-        if player.is_resting:
-            embed.add_field(
-                name="Rest Status",
-                value=(
-                    "Status: **Resting**\n"
-                    f"Resting Since: **{rest_minutes} minute(s) ago**\n"
-                    f"Projected Recovery: **+{recovered_stamina} stamina**"
-                ),
-                inline=False,
-            )
+        add_explore_divider(embed)
+        embed.add_field(
+            name="What Shapes Your Edge",
+            value=build_explore_info_lines(
+                f"🎭 {reputation_label}: {reputation_title}",
+                "Your base stats stay clean.",
+                "Trait bonuses and future systems layer on top of them.",
+            ),
+            inline=False,
+        )
+        _add_status_field(embed, player)
         return embed
 
     if page_key == "formulas":
@@ -115,38 +224,48 @@ def build_profile_embed(
         effective_defense = calculate_effective_defense(player.defense, trait)
         effective_speed = calculate_effective_speed(player.speed, trait)
 
-        embed.description = (
-            "These are the current helper formulas powering your profile. "
-            "They keep future combat and progression systems easy to expand."
+        embed = _build_profile_embed_shell(
+            page_key=page_key,
+            discord_user=discord_user,
+            description=(
+                "These readings sit under the hood of your sheet. They are simple on purpose, "
+                "so combat, Kido, Zanpakuto growth, and future systems can plug in cleanly."
+            ),
         )
         embed.add_field(
-            name="Spiritual Pressure",
-            value=(
-                "Power + Defense + Speed + Reiatsu\n"
-                f"`{player.power} + {player.defense} + {player.speed} + {player.reiatsu}"
-                f" = {player.spiritual_pressure}`"
+            name="Current Readings",
+            value=build_explore_info_lines(
+                "📈 Spiritual Pressure",
+                "Power + Defense + Speed + Reiatsu",
+                (
+                    f"`{player.power} + {player.defense} + {player.speed} + {player.reiatsu}"
+                    f" = {player.spiritual_pressure}`"
+                ),
             ),
             inline=False,
         )
         embed.add_field(
             name="Trait-Adjusted Values",
-            value=(
-                f"Effective Max HP: **{effective_hp}**\n"
-                f"Effective Max Stamina: **{effective_stamina}**\n"
-                f"Effective Max Mana: **{effective_mana}**\n"
-                f"Damage Power: **{effective_power}**\n"
-                f"Defense Calc: **{effective_defense}**\n"
-                f"Speed Calc: **{effective_speed}**"
+            value=build_explore_info_lines(
+                f"❤️ Effective Max HP: {effective_hp}",
+                f"⚡ Effective Max Stamina: {effective_stamina}",
+                f"🔷 Effective Max Mana: {effective_mana}",
+                f"🧭 Damage Power: {effective_power}",
+                f"🧭 Defense Calc: {effective_defense}",
+                f"🧭 Speed Calc: {effective_speed}",
             ),
             inline=False,
         )
         embed.add_field(
             name="Passive Hooks",
-            value=(
-                f"Dodge Bonus: **{trait.bonuses.flat_dodge_pct:.0%}**\n"
-                f"Stamina Regen Bonus: **{trait.bonuses.stamina_regen_pct:.0%}**\n"
-                f"Event Reward Bonus: **{trait.bonuses.event_reward_pct:.0%}**\n"
-                f"Defeat Penalty Reduction: **{trait.bonuses.defeat_penalty_reduction_pct:.0%}**"
+            value=build_explore_info_lines(
+                f"🧭 Dodge Bonus: {trait.bonuses.flat_dodge_pct:.0%}",
+                f"⚡ Stamina Regen Bonus: {trait.bonuses.stamina_regen_pct:.0%}",
+                f"🎯 Event Reward Bonus: {trait.bonuses.event_reward_pct:.0%}",
+                (
+                    "✨ Defeat Penalty Reduction: "
+                    f"{trait.bonuses.defeat_penalty_reduction_pct:.0%}"
+                ),
             ),
             inline=False,
         )
@@ -169,108 +288,145 @@ def build_profile_embed(
             ),
         ]
 
-        embed.description = (
-            "Every soul carries a hidden edge. This trait is stored separately from base stats, "
-            "so combat and exploration systems can scale without rewriting the profile model."
+        embed = _build_profile_embed_shell(
+            page_key=page_key,
+            discord_user=discord_user,
+            description=(
+                "Some souls bend before they break. Some cut cleaner than they should. This is the "
+                "edge your soul was carrying before you even knew its name."
+            ),
         )
-        embed.add_field(name="Soul Trait", value=f"**{trait.name}**", inline=False)
+        embed.add_field(
+            name="Current State",
+            value=build_explore_info_lines(
+                f"🎭 Trait: {trait.name}",
+                f"📍 Location: {location.name}",
+                f"🎭 {reputation_label}: {reputation_title}",
+            ),
+            inline=False,
+        )
+        add_explore_divider(embed)
         embed.add_field(name="Effect", value=trait.effect, inline=False)
-        embed.add_field(name="Stored Bonuses", value="\n".join(bonus_lines), inline=False)
+        embed.add_field(
+            name="Stored Bonuses",
+            value="\n".join(bonus_lines),
+            inline=False,
+        )
+        _add_status_field(embed, player)
         return embed
 
     if page_key == "progression":
-        embed.description = (
-            "This page tracks the long road ahead. Ranks, awakenings, events, and future forms can "
-            "all grow from this progression base."
+        xp_to_next = max(0, get_xp_required_for_level(player.level) - player.xp)
+        embed = _build_profile_embed_shell(
+            page_key=page_key,
+            discord_user=discord_user,
+            description=(
+                "Rukongai is only the beginning. This page tracks how far you have come, how close "
+                "the next step is, and how much weight your name carries where you stand."
+            ),
         )
         embed.add_field(
-            name="Current Progress",
-            value=(
-                f"Race: **{player.race}**\n"
-                f"Rank: **{player.rank}**\n"
-                f"Level: **{player.level}**\n"
-                f"XP: **{player.xp}**"
+            name="Current State",
+            value=build_explore_info_lines(
+                f"📈 Level: {player.level}",
+                f"🎯 XP: {player.xp}",
+                f"📈 To Next Level: {xp_to_next}",
+                f"🧭 Spiritual Pressure: {player.spiritual_pressure}",
             ),
             inline=True,
         )
         embed.add_field(
             name="World State",
-            value=(
-                f"Location: **{location.name}**\n"
-                f"Room: {room_mention}\n"
-                f"{reputation_label}: **{reputation_title}**\n"
-                f"Created: {discord.utils.format_dt(player.created_at, 'F')}"
+            value=build_explore_info_lines(
+                f"📍 Location: {location.name}",
+                f"🎭 {reputation_label}: {reputation_title}",
+                f"📘 Race: {player.race}",
+                f"📜 Rank: {player.rank}",
             ),
             inline=True,
         )
+        add_explore_divider(embed)
         embed.add_field(
-            name="Foundation Ready",
-            value=(
-                "Leveling, rank-ups, combat rewards, shops, quests, and evolution trees can be "
-                "attached here without reworking the core player table."
+            name="What Comes Next",
+            value=build_explore_info_lines(
+                f"🕓 Soul Record Opened: {discord.utils.format_dt(player.created_at, 'R')}",
+                f"📍 Current Room: {room_mention}",
+                "Training, travel, shops, awakenings, and later forms can build on this clean progression base.",
             ),
             inline=False,
         )
+        _add_status_field(embed, player)
         return embed
 
-    embed.description = (
-        "A wandering soul steps into the Bleach world. Your record below is the foundation for "
-        "everything that comes next."
+    embed = _build_profile_embed_shell(
+        page_key="overview",
+        discord_user=discord_user,
+        description=(
+            "A soul does not get much for free in Rukongai. This record tracks what you have endured, "
+            "what the district knows about you, and what kind of pressure your name carries now."
+        ),
     )
     embed.add_field(
-        name="Identity",
-        value=(
-            f"Race: **{player.race}**\n"
-            f"Rank: **{player.rank}**\n"
-            f"Trait: **{trait.name}**"
+        name="Current State",
+        value=build_explore_info_lines(
+            f"📘 Race: {player.race}",
+            f"📜 Rank: {player.rank}",
+            f"📈 Level: {player.level}",
+            f"🎭 Trait: {trait.name}",
         ),
         inline=True,
-    )
-    embed.add_field(
-        name="Progress",
-        value=(
-            f"Level: **{player.level}**\n"
-            f"XP: **{player.xp}**\n"
-            f"Spiritual Pressure: **{player.spiritual_pressure}**"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="Status",
-        value=(
-            f"Status: **{status_value}**\n"
-            f"Resting Since: **{rest_minutes} minute(s) ago**\n"
-            f"Projected Recovery: **+{recovered_stamina} stamina**"
-            if player.is_resting
-            else "Status: **Available**"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Location",
-        value=(
-            f"**{location.name}**\n"
-            f"Room: {room_mention}\n"
-            f"{reputation_label}: **{reputation_title}**"
-        ),
-        inline=False,
     )
     embed.add_field(
         name="Resources",
-        value=(
-            f"HP: **{player.hp_current}/{player.hp_max}**\n"
-            f"Stamina: **{player.stamina_current}/{player.stamina_max}**\n"
-            f"Mana: **{player.mana_current}/{player.mana_max}**"
+        value=build_explore_info_lines(
+            f"❤️ HP: {player.hp_current}/{player.hp_max}",
+            f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
+            f"🔷 Mana: {player.mana_current}/{player.mana_max}",
+            f"🧭 Spiritual Pressure: {player.spiritual_pressure}",
+        ),
+        inline=True,
+    )
+    add_explore_divider(embed)
+    embed.add_field(
+        name="World State",
+        value=build_explore_info_lines(
+            f"📍 Location: {location.name}",
+            f"🕓 Room: {room_mention}",
+            f"🎭 {reputation_label}: {reputation_title}",
+            f"✨ Status: {status_value}",
         ),
         inline=False,
     )
+    if player.is_resting:
+        embed.add_field(
+            name="Status Effect",
+            value=build_explore_info_lines(
+                "✨ Resting",
+                f"⏱ Resting Since: {rest_minutes} minute(s) ago",
+                f"⚡ Projected Recovery: +{recovered_stamina} stamina",
+            ),
+            inline=False,
+        )
+    if player.has_minor_setback:
+        embed.add_field(
+            name="Status Effect",
+            value=build_explore_info_lines(
+                "✨ Minor Setback",
+                (
+                    f"Aftermath: {player.setback_source}"
+                    if player.setback_source
+                    else "Aftermath: A hard loss is still hanging on you."
+                ),
+            ),
+            inline=False,
+        )
     return embed
 
 
 class ProfilePageSelect(discord.ui.Select["ProfileView"]):
     def __init__(self) -> None:
         super().__init__(
-            placeholder="Choose a profile page",
+            placeholder="Choose a page in your Soul Record",
             min_values=1,
             max_values=1,
             options=[discord.SelectOption(**option_data) for option_data in PROFILE_PAGE_OPTIONS],
