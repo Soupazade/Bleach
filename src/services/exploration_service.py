@@ -36,8 +36,11 @@ from src.services.player_service import get_or_sync_player_record, update_player
 from src.services.reputation_service import (
     apply_rep_stamina_cost,
     apply_rep_xp,
+    apply_reputation_change,
     format_reputation_stamina_text,
+    format_reputation_change_text,
     format_reputation_xp_text,
+    get_location_reputation_field,
     get_location_reputation_label,
     get_location_reputation_title,
     get_location_reputation_value,
@@ -76,6 +79,7 @@ PENDING_EXPLORATION_CHOICE_COLUMNS = """
     base_title,
     base_description,
     base_xp,
+    base_rep_change,
     base_combat_outcome,
     created_at,
     updated_at
@@ -113,6 +117,7 @@ class ExplorationResolution:
     levels_gained: int
     base_xp: int = 0
     reputation_xp_modifier_pct: int = 0
+    reputation_change: int = 0
     combat_outcome: str | None = None
 
 
@@ -326,9 +331,10 @@ async def create_pending_exploration_choice(
             base_title,
             base_description,
             base_xp,
+            base_rep_change,
             base_combat_outcome
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING {PENDING_EXPLORATION_CHOICE_COLUMNS}
         """,
         exploration.user_id,
@@ -349,6 +355,7 @@ async def create_pending_exploration_choice(
         base_resolution.title if base_resolution is not None else None,
         base_resolution.description if base_resolution is not None else None,
         base_resolution.base_xp if base_resolution is not None else None,
+        base_resolution.reputation_change if base_resolution is not None else None,
         base_resolution.combat_outcome if base_resolution is not None else None,
     )
     return PendingExplorationChoice.from_record(record)
@@ -581,30 +588,40 @@ def _resolve_outcome_xp(
     return random.randint(approach.xp_min, approach.xp_max)
 
 
-async def _apply_xp_gain(
+async def _apply_progression_and_reputation(
     connection: Connection,
     user_id: int,
+    *,
+    location_key: str,
     xp_gained: int,
-) -> tuple[PlayerProfile, int]:
+    reputation_change: int = 0,
+) -> tuple[PlayerProfile, int, int]:
     player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
     if player_sync is None:
         raise ValueError(f"Missing player profile for user {user_id}")
 
-    player_record = player_sync.record
+    current_player = PlayerProfile.from_record(player_sync.record)
     new_level, new_xp, levels_gained = apply_experience_gain(
-        current_level=int(player_record["level"]),
-        current_xp=int(player_record["xp"]),
+        current_level=current_player.level,
+        current_xp=current_player.xp,
         xp_gain=xp_gained,
     )
-    updated_player_record = await update_player_record(
-        connection,
-        user_id,
-        {
-            "level": new_level,
-            "xp": new_xp,
-        },
-    )
-    return PlayerProfile.from_record(updated_player_record), levels_gained
+
+    updates: dict[str, Any] = {
+        "level": new_level,
+        "xp": new_xp,
+    }
+
+    applied_reputation_change = 0
+    if reputation_change != 0:
+        reputation_field = get_location_reputation_field(location_key)
+        current_reputation = get_location_reputation_value(current_player, location_key)
+        updated_reputation = apply_reputation_change(current_reputation, reputation_change)
+        applied_reputation_change = updated_reputation - current_reputation
+        updates[reputation_field] = updated_reputation
+
+    updated_player_record = await update_player_record(connection, user_id, updates)
+    return PlayerProfile.from_record(updated_player_record), levels_gained, applied_reputation_change
 
 
 async def _get_current_player(
@@ -635,6 +652,19 @@ def _apply_location_stamina_cost_modifier(
     rep_value = get_location_reputation_value(player, location_key)
     adjusted_cost = apply_rep_stamina_cost(base_cost, rep_value)
     return adjusted_cost, adjusted_cost - base_cost
+
+
+def _get_instant_reputation_change(
+    event_type: Literal["reward", "combat", "choice", "flavor"],
+    combat_outcome: str | None,
+) -> int:
+    if event_type == "reward":
+        return 2
+    if event_type == "choice":
+        return 2
+    if event_type == "combat":
+        return 2 if combat_outcome == "Victory" else -2
+    return 0
 
 
 def _should_trigger_special_opportunity(approach: ExploreApproachDefinition) -> bool:
@@ -677,6 +707,7 @@ def _build_resolution_from_pending_base(
         session.location,
         session.base_xp,
     )
+    base_rep_change = session.base_rep_change or 0
 
     return ExplorationResolution(
         exploration=session.to_active_exploration(),
@@ -688,6 +719,7 @@ def _build_resolution_from_pending_base(
         levels_gained=levels_gained,
         base_xp=session.base_xp,
         reputation_xp_modifier_pct=xp_modifier_pct,
+        reputation_change=base_rep_change,
         combat_outcome=session.base_combat_outcome,
     )
 
@@ -747,7 +779,7 @@ def _build_decision_prompt(
             )
         description = (
             f"Your **{approach.label}** turns up something rare in **{location.name}**. "
-            f"**{special_event.title}** is within reach if you spend {cost_line} and push deeper."
+            f"**{special_event.title}** is there if you are willing to spend {cost_line} and press your luck."
         )
         options = (
             ExplorationDecisionOptionRender(
@@ -761,7 +793,7 @@ def _build_decision_prompt(
             session=session,
             prompt_kind="special_offer",
             event_title="Special Opportunity",
-            step_title="An unusual opportunity appears",
+            step_title="The street gives you one more chance",
             description=description,
             step_number=1,
             total_steps=2,
@@ -958,6 +990,7 @@ async def resolve_exploration(
                     exploration.location,
                     base_xp,
                 )
+                reputation_change = _get_instant_reputation_change(event_type, combat_outcome)
                 base_resolution = ExplorationResolution(
                     exploration=exploration,
                     player=current_player,
@@ -968,6 +1001,7 @@ async def resolve_exploration(
                     levels_gained=0,
                     base_xp=base_xp,
                     reputation_xp_modifier_pct=xp_modifier_pct,
+                    reputation_change=reputation_change,
                     combat_outcome=combat_outcome,
                 )
                 if _should_trigger_special_opportunity(approach):
@@ -976,7 +1010,13 @@ async def resolve_exploration(
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
 
                 # TODO: Apply region reputation changes here once instant outcomes carry reputation deltas.
-                player, levels_gained = await _apply_xp_gain(connection, user_id, adjusted_xp)
+                player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+                    connection,
+                    user_id,
+                    location_key=exploration.location,
+                    xp_gained=adjusted_xp,
+                    reputation_change=reputation_change,
+                )
                 await delete_active_exploration(connection, user_id)
                 resolution = ExplorationResolution(
                     exploration=exploration,
@@ -988,6 +1028,7 @@ async def resolve_exploration(
                     levels_gained=levels_gained,
                     base_xp=base_xp,
                     reputation_xp_modifier_pct=xp_modifier_pct,
+                    reputation_change=applied_reputation_change,
                     combat_outcome=combat_outcome,
                 )
                 return ExplorationPostResult(
@@ -1047,7 +1088,13 @@ async def advance_exploration_choice(
                     session.location,
                     outcome.xp_reward,
                 )
-                player, levels_gained = await _apply_xp_gain(connection, user_id, adjusted_xp)
+                player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+                    connection,
+                    user_id,
+                    location_key=session.location,
+                    xp_gained=adjusted_xp,
+                    reputation_change=outcome.reputation_change,
+                )
                 await upsert_player_npc_progress(
                     connection,
                     user_id=user_id,
@@ -1067,6 +1114,7 @@ async def advance_exploration_choice(
                     levels_gained=levels_gained,
                     base_xp=outcome.xp_reward,
                     reputation_xp_modifier_pct=xp_modifier_pct,
+                    reputation_change=applied_reputation_change,
                     combat_outcome=outcome.combat_outcome,
                 )
                 return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
@@ -1087,7 +1135,13 @@ async def advance_exploration_choice(
                         session.location,
                         session.base_xp,
                     )
-                    player, levels_gained = await _apply_xp_gain(connection, user_id, adjusted_xp)
+                    player, levels_gained, _ = await _apply_progression_and_reputation(
+                        connection,
+                        user_id,
+                        location_key=session.location,
+                        xp_gained=adjusted_xp,
+                        reputation_change=session.base_rep_change or 0,
+                    )
                     resolution = _build_resolution_from_pending_base(session, player, levels_gained)
                     await delete_pending_choice(connection, user_id)
                     return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
@@ -1113,7 +1167,7 @@ async def advance_exploration_choice(
 
                 special_event = get_decision_event_definition(session.location, special_event_key)
                 now = datetime.now(timezone.utc)
-                await update_player_record(
+                updated_player_record = await update_player_record(
                     connection,
                     user_id,
                     {
@@ -1134,7 +1188,10 @@ async def advance_exploration_choice(
                 )
                 return ExplorationChoiceAdvanceResult(
                     status="advanced",
-                    prompt=_build_decision_prompt(updated_session),
+                    prompt=_build_decision_prompt(
+                        updated_session,
+                        PlayerProfile.from_record(updated_player_record),
+                    ),
                 )
 
             event = get_decision_event_definition(session.location, session.event_key)
@@ -1156,7 +1213,7 @@ async def advance_exploration_choice(
                 )
                 return ExplorationChoiceAdvanceResult(
                     status="advanced",
-                    prompt=_build_decision_prompt(updated_session),
+                    prompt=_build_decision_prompt(updated_session, current_player),
                 )
 
             if selected_option.outcome is None:
@@ -1185,6 +1242,7 @@ async def advance_exploration_choice(
                 levels_gained=0,
                 base_xp=base_xp,
                 reputation_xp_modifier_pct=xp_modifier_pct,
+                reputation_change=outcome.reputation_change,
                 combat_outcome=outcome.combat_outcome,
             )
             if session.session_kind == "decision" and _should_trigger_special_opportunity(approach):
@@ -1193,7 +1251,13 @@ async def advance_exploration_choice(
                 return ExplorationChoiceAdvanceResult(status="advanced", prompt=prompt)
 
             # TODO: Apply region reputation changes here once branching outcomes carry reputation deltas.
-            player, levels_gained = await _apply_xp_gain(connection, user_id, adjusted_xp)
+            player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+                connection,
+                user_id,
+                location_key=session.location,
+                xp_gained=adjusted_xp,
+                reputation_change=outcome.reputation_change,
+            )
             await delete_pending_choice(connection, user_id)
             resolution = ExplorationResolution(
                 exploration=session.to_active_exploration(),
@@ -1209,6 +1273,7 @@ async def advance_exploration_choice(
                 levels_gained=levels_gained,
                 base_xp=base_xp,
                 reputation_xp_modifier_pct=xp_modifier_pct,
+                reputation_change=applied_reputation_change,
                 combat_outcome=outcome.combat_outcome,
             )
             return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
@@ -1240,7 +1305,7 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         color=color_by_event[resolution.event_type],
     )
     embed.add_field(
-        name="Street Run",
+        name="This Run",
         value=(
             f"Location: **{location.name}**\n"
             f"Approach: **{approach.label}**\n"
@@ -1250,7 +1315,7 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         inline=True,
     )
     embed.add_field(
-        name="Outcome",
+        name="What Came Of It",
         value=(
             f"XP Gained: **{resolution.xp_gained}**"
             + (f" {xp_modifier_text}" if xp_modifier_text is not None else "")
@@ -1260,6 +1325,14 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         ),
         inline=True,
     )
+    embed.add_field(
+        name="Your Name In The District",
+        value=(
+            f"{reputation_label}: **{reputation_title}**\n"
+            f"Shift This Run: {format_reputation_change_text(resolution.reputation_change)}"
+        ),
+        inline=False,
+    )
 
     if resolution.combat_outcome is not None:
         embed.add_field(name="Combat Result", value=f"**{resolution.combat_outcome}**", inline=False)
@@ -1267,11 +1340,11 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
     if resolution.levels_gained > 0:
         embed.add_field(
             name="Level Up",
-            value=f"Your reiatsu sharpens. You gained **{resolution.levels_gained}** level(s).",
+            value=f"Your reiatsu swells. You climbed **{resolution.levels_gained}** level(s).",
             inline=False,
         )
 
-    embed.set_footer(text="Bleach RPG | Exploration Complete")
+    embed.set_footer(text="The streets remember what kind of soul you are.")
     return embed
 
 

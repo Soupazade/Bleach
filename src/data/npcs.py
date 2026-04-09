@@ -9,6 +9,7 @@ class NpcChoiceOutcomeDefinition:
     description: str
     event_type: str
     xp_reward: int
+    reputation_change: int
     next_state: str
     next_stage: int
     combat_outcome: str | None = None
@@ -60,6 +61,7 @@ def _outcome(
     description: str,
     event_type: str,
     xp_reward: int,
+    reputation_change: int = 0,
     next_state: str,
     next_stage: int,
     combat_outcome: str | None = None,
@@ -69,6 +71,7 @@ def _outcome(
         description=description,
         event_type=event_type,
         xp_reward=xp_reward,
+        reputation_change=reputation_change,
         next_state=next_state,
         next_stage=next_stage,
         combat_outcome=combat_outcome,
@@ -107,10 +110,11 @@ KAITO_STAGE_ONE = NpcEncounterDefinition(
             outcome=_outcome(
                 title="Kaito Eats in Silence",
                 description=(
-                    "You share what little you can. Kaito barely speaks, but the way he clutches the food tells you he will remember this."
+                    "You hand over what little you can spare. Kaito barely gets a word out, but the way he grips the food says enough."
                 ),
                 event_type="reward",
                 xp_reward=12,
+                reputation_change=2,
                 next_state="helped",
                 next_stage=1,
             ),
@@ -137,10 +141,11 @@ KAITO_STAGE_ONE = NpcEncounterDefinition(
             outcome=_outcome(
                 title="You Take What He Has",
                 description=(
-                    "You strip the last scraps from Kaito and leave him with nothing. He does not fight back, but the look he gives you lingers."
+                    "You strip the last scraps from Kaito and leave him with nothing. He does not fight back. That somehow makes it worse."
                 ),
                 event_type="choice",
                 xp_reward=2,
+                reputation_change=-5,
                 next_state="robbed",
                 next_stage=1,
             ),
@@ -164,10 +169,11 @@ KAITO_STAGE_TWO_HELPED = NpcEncounterDefinition(
             outcome=_outcome(
                 title="The Rumor Pays Off",
                 description=(
-                    "You follow Kaito's lead and it turns into a real score. For the first time, he manages a small smile."
+                    "You follow Kaito's lead and it turns into a real score. For the first time, he manages something close to a smile."
                 ),
                 event_type="reward",
                 xp_reward=20,
+                reputation_change=2,
                 next_state="trusted_kaito",
                 next_stage=2,
             ),
@@ -194,10 +200,11 @@ KAITO_STAGE_TWO_HELPED = NpcEncounterDefinition(
             outcome=_outcome(
                 title="You Push Too Hard",
                 description=(
-                    "You lean on Kaito for every detail until panic takes over. He bolts before the story is complete, and whatever trust existed goes with him."
+                    "You keep pressing until panic gets the better of him. Kaito bolts, and whatever trust was there goes with him."
                 ),
                 event_type="flavor",
                 xp_reward=5,
+                reputation_change=-2,
                 next_state="shaken",
                 next_stage=2,
             ),
@@ -221,10 +228,11 @@ KAITO_STAGE_TWO_IGNORED = NpcEncounterDefinition(
             outcome=_outcome(
                 title="Late Kindness Still Matters",
                 description=(
-                    "You help him this time. Kaito is wary, but hunger leaves little room for pride, and he accepts it with a quiet nod."
+                    "You help him this time. Kaito is wary, but hunger leaves little room for pride, and he takes it with a small nod."
                 ),
                 event_type="reward",
                 xp_reward=16,
+                reputation_change=2,
                 next_state="helped_late",
                 next_stage=2,
             ),
@@ -251,10 +259,11 @@ KAITO_STAGE_TWO_IGNORED = NpcEncounterDefinition(
             outcome=_outcome(
                 title="He Gives You a Name",
                 description=(
-                    "You wring a rumor out of him and move on. It helps you, but Kaito learns exactly what kind of soul you are."
+                    "You squeeze a rumor out of him and move on. It helps you, but Kaito learns exactly what kind of soul you are."
                 ),
                 event_type="choice",
                 xp_reward=10,
+                reputation_change=-2,
                 next_state="used",
                 next_stage=2,
             ),
@@ -278,10 +287,11 @@ KAITO_STAGE_TWO_ROBBED = NpcEncounterDefinition(
             outcome=_outcome(
                 title="A Thin Attempt at Mercy",
                 description=(
-                    "You give back enough to matter. Kaito does not thank you, but the hatred in his eyes dulls into confusion."
+                    "You give back enough to matter. Kaito does not thank you, but the hatred in his eyes falters for a second."
                 ),
                 event_type="choice",
                 xp_reward=10,
+                reputation_change=2,
                 next_state="partially_redeemed",
                 next_stage=2,
             ),
@@ -293,10 +303,11 @@ KAITO_STAGE_TWO_ROBBED = NpcEncounterDefinition(
             outcome=_outcome(
                 title="Fear Wins Again",
                 description=(
-                    "You drive him off one more time. He runs, but not before memorizing your face like a curse."
+                    "You drive him off one more time. He runs, but not before fixing your face in his memory like a curse."
                 ),
                 event_type="combat",
                 xp_reward=3,
+                reputation_change=-5,
                 next_state="terrorized",
                 next_stage=2,
                 combat_outcome="Setback",
@@ -336,10 +347,11 @@ KAITO_STAGE_THREE_TRUST = NpcEncounterDefinition(
             outcome=_outcome(
                 title="A Better Ending Than Most",
                 description=(
-                    "You trust Kaito and bring him along. The cache is real, and for one rare night both of you walk away with more than survival."
+                    "You trust Kaito and bring him with you. The cache is real, and for one rare night both of you walk away with something better than bare survival."
                 ),
                 event_type="reward",
                 xp_reward=32,
+                reputation_change=5,
                 next_state="saved",
                 next_stage=3,
             ),
@@ -351,10 +363,11 @@ KAITO_STAGE_THREE_TRUST = NpcEncounterDefinition(
             outcome=_outcome(
                 title="You Leave Him Behind",
                 description=(
-                    "The cache exists, but Kaito does not share in it. The score is good, though the guilt stains it."
+                    "The cache exists, but Kaito does not share in it. The score is good. The taste it leaves behind is not."
                 ),
                 event_type="choice",
                 xp_reward=22,
+                reputation_change=-2,
                 next_state="used_again",
                 next_stage=3,
             ),
@@ -382,6 +395,7 @@ KAITO_STAGE_THREE_FALL = NpcEncounterDefinition(
                 ),
                 event_type="reward",
                 xp_reward=24,
+                reputation_change=5,
                 next_state="rescued",
                 next_stage=3,
             ),
@@ -408,10 +422,11 @@ KAITO_STAGE_THREE_FALL = NpcEncounterDefinition(
             outcome=_outcome(
                 title="You Become the Worst Thing There",
                 description=(
-                    "You make Kaito's last bad day even worse. The reward is shallow, and the consequence lingers long after the alley is quiet."
+                    "You make Kaito's bad day even worse. Whatever you gain from it feels cheap the moment the alley goes quiet."
                 ),
                 event_type="combat",
                 xp_reward=2,
+                reputation_change=-5,
                 next_state="broken",
                 next_stage=3,
                 combat_outcome="Setback",

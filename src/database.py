@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS active_exploration_choices (
     base_title TEXT,
     base_description TEXT,
     base_xp INTEGER,
+    base_rep_change INTEGER,
     base_combat_outcome TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -135,6 +136,7 @@ ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS = (
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_title TEXT",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_description TEXT",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_xp INTEGER",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_rep_change INTEGER",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_combat_outcome TEXT",
 )
 

@@ -150,6 +150,14 @@ def apply_reputation_change(current_value: int, delta: int) -> int:
     return clamp_reputation(current_value + delta)
 
 
+def get_location_reputation_field(location_key: str) -> str:
+    field_name, _ = LOCATION_REPUTATION_FIELDS.get(
+        location_key,
+        ("rukongai_rep", "Region Reputation"),
+    )
+    return field_name
+
+
 def get_reputation_modifiers(rep_value: int) -> dict[str, int | str]:
     clamped_value = clamp_reputation(rep_value)
     for minimum, maximum, modifier_data in REPUTATION_MODIFIER_RANGES:
@@ -205,6 +213,14 @@ def format_reputation_stamina_text(stamina_cost: int, modifier: int, reputation_
         return f"**{stamina_cost}**"
 
     return f"**{stamina_cost}** ({modifier:+d} from {reputation_title} reputation)"
+
+
+def format_reputation_change_text(delta: int) -> str:
+    if delta > 0:
+        return f"**+{delta} reputation**"
+    if delta < 0:
+        return f"**{delta} reputation**"
+    return "**No shift**"
 
 
 def get_location_reputation_label(location_key: str) -> str:

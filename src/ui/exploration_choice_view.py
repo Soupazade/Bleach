@@ -28,7 +28,7 @@ def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord
     exploration = prompt.session.to_active_exploration()
     approach = get_explore_approach(prompt.session.approach)
     color = discord.Color.from_rgb(88, 112, 168)
-    footer_text = "Choose quickly. The streets do not wait."
+    footer_text = "Choose fast. Rukongai never waits for anyone."
     if prompt.prompt_kind == "special_offer":
         color = discord.Color.dark_orange()
         if prompt.stamina_cost > 0:
@@ -42,10 +42,10 @@ def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord
             footer_text = "Engaging costs extra stamina."
     elif prompt.prompt_kind == "special_event":
         color = discord.Color.red()
-        footer_text = "The opportunity turned dangerous fast."
+        footer_text = "The opening turned ugly fast."
     elif prompt.prompt_kind == "npc_event":
         color = discord.Color.from_rgb(130, 108, 72)
-        footer_text = "Some faces return to you in Rukongai."
+        footer_text = "In Rukongai, the same faces find you again."
 
     embed = discord.Embed(
         title=prompt.event_title,
@@ -109,7 +109,7 @@ class ExplorationChoiceView(discord.ui.View):
         message_session = await get_pending_exploration_choice_by_message(self.bot.db_pool, interaction.message.id)
         if message_session is None:
             await interaction.response.send_message(
-                "That street decision is no longer active.",
+                "That moment in the street has already passed.",
                 ephemeral=True,
             )
             try:
@@ -120,7 +120,7 @@ class ExplorationChoiceView(discord.ui.View):
 
         if message_session.user_id != interaction.user.id:
             await interaction.response.send_message(
-                "This street decision belongs to another player.",
+                "That choice belongs to someone else.",
                 ephemeral=True,
             )
             return
@@ -133,7 +133,7 @@ class ExplorationChoiceView(discord.ui.View):
         )
         if result.status == "missing":
             await interaction.response.send_message(
-                "That street decision could not be resolved right now.",
+                "I could not settle that street choice right now.",
                 ephemeral=True,
             )
             return
@@ -147,7 +147,7 @@ class ExplorationChoiceView(discord.ui.View):
 
         if result.status == "insufficient_stamina":
             await interaction.response.send_message(
-                f"You need **{result.required_stamina} stamina** available to engage this special opportunity.",
+                f"You need **{result.required_stamina} stamina** left in you to chase this opening.",
                 ephemeral=True,
             )
             return
@@ -160,7 +160,7 @@ class ExplorationChoiceView(discord.ui.View):
             return
 
         await interaction.response.send_message(
-            "That street decision could not be resolved right now.",
+            "I could not settle that street choice right now.",
             ephemeral=True,
         )
 

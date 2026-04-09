@@ -46,6 +46,7 @@ class PendingExplorationChoice:
     base_title: str | None
     base_description: str | None
     base_xp: int | None
+    base_rep_change: int | None
     base_combat_outcome: str | None
     created_at: datetime
     updated_at: datetime
@@ -71,6 +72,7 @@ class PendingExplorationChoice:
             base_title=str(record["base_title"]) if record["base_title"] is not None else None,
             base_description=str(record["base_description"]) if record["base_description"] is not None else None,
             base_xp=int(record["base_xp"]) if record["base_xp"] is not None else None,
+            base_rep_change=int(record["base_rep_change"]) if record["base_rep_change"] is not None else None,
             base_combat_outcome=(
                 str(record["base_combat_outcome"])
                 if record["base_combat_outcome"] is not None

@@ -66,9 +66,9 @@ def build_explore_started_embed(
     stamina_modifier = stamina_cost - base_stamina_cost
 
     embed = discord.Embed(
-        title="Exploration Underway",
+        title="You Slip Into the District",
         description=(
-            f"You begin **{approach.label}** in **{location.name}**.\n"
+            f"You slip into **{approach.label}** in **{location.name}**.\n"
             f"{approach.intro_text}"
         ),
         color=discord.Color.from_rgb(109, 142, 196),
@@ -76,7 +76,7 @@ def build_explore_started_embed(
     embed.add_field(
         name="Timing",
         value=(
-            f"Result In: **{approach.duration_label}**\n"
+            f"It Wraps In: **{approach.duration_label}**\n"
             f"Ends: {discord.utils.format_dt(exploration.end_time, 'R')}"
         ),
         inline=True,
@@ -90,7 +90,7 @@ def build_explore_started_embed(
         ),
         inline=True,
     )
-    embed.set_footer(text="Your result will be posted automatically in this channel.")
+    embed.set_footer(text="If the streets answer, the result will land here.")
     return embed
 
 
@@ -101,8 +101,8 @@ def build_explore_active_embed(player: PlayerProfile, exploration: ActiveExplora
     reputation_title = get_location_reputation_title(player, exploration.location)
 
     embed = discord.Embed(
-        title="Exploration Already Active",
-        description="You are already out in the district. Hold your nerve and let the run finish.",
+        title="You Are Already Out There",
+        description="You have already thrown your lot in with the street. Let that run play out first.",
         color=discord.Color.orange(),
     )
     embed.add_field(
@@ -120,8 +120,8 @@ def build_explore_active_embed(player: PlayerProfile, exploration: ActiveExplora
 
 def build_explore_withdraw_embed() -> discord.Embed:
     return discord.Embed(
-        title="You Withdraw",
-        description="You hold your position and let the district pass by for now.",
+        title="You Stay Put",
+        description="You stay where you are and let the night move without you for now.",
         color=discord.Color.dark_grey(),
     )
 
@@ -230,7 +230,7 @@ class ExploreView(discord.ui.View):
                 await interaction.response.edit_message(
                     embed=discord.Embed(
                         title="Resolution Failed",
-                        description="I couldn't resolve your finished exploration right now. Please try `/explore` again.",
+                        description="The run ended, but I could not pull the result together just yet. Try `/explore` again in a moment.",
                         color=discord.Color.red(),
                     ),
                     view=None,
@@ -241,9 +241,9 @@ class ExploreView(discord.ui.View):
                 embed=discord.Embed(
                     title="Previous Run Posted",
                     description=(
-                        "Your previous exploration had already ended. I posted the result in the channel."
+                        "That run had already finished. I posted the outcome in the channel."
                         if resolution.status == "instant"
-                        else "Your previous exploration had already ended. I posted a street decision in the channel."
+                        else "That run had already finished. I posted the next street call in the channel."
                     ),
                     color=discord.Color.green(),
                 ),
@@ -257,8 +257,8 @@ class ExploreView(discord.ui.View):
                 embed=discord.Embed(
                     title="Street Decision Waiting",
                     description=(
-                        "You still have an unresolved exploration decision waiting in the channel.\n"
-                        f"Decision: **{result.pending_choice.event_title}**\n"
+                        "The streets are still waiting on your last call.\n"
+                        f"Moment: **{result.pending_choice.event_title}**\n"
                         f"Step: **{result.pending_choice.step_number}/{result.pending_choice.total_steps}**\n"
                         f"Channel: <#{result.pending_choice.session.channel_id}>"
                     ),
@@ -292,7 +292,7 @@ class ExploreView(discord.ui.View):
                 embed=discord.Embed(
                     title="Not Enough Stamina",
                     description=(
-                        "You do not have enough stamina to begin an exploration.\n"
+                        "You do not have the stamina to step back into the streets.\n"
                         f"Current Stamina: **{result.player.stamina_current}/{result.player.stamina_max}**\n"
                         f"Required Cost: {format_reputation_stamina_text(result.stamina_cost, stamina_modifier, reputation_title)}"
                     ),
@@ -306,7 +306,7 @@ class ExploreView(discord.ui.View):
         await interaction.response.edit_message(
             embed=discord.Embed(
                 title="No Soul Record Found",
-                description="You need to use `/start` before you can explore.",
+                description="You need to use `/start` before the streets will know your name.",
                 color=discord.Color.red(),
             ),
             view=None,

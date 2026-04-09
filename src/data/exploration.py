@@ -65,6 +65,7 @@ class ExplorationOutcomeDefinition:
     description: str
     event_type: ExploreEventType
     xp_profile: ExploreXpProfile
+    reputation_change: int = 0
     combat_outcome: str | None = None
 
 
@@ -141,6 +142,7 @@ def _outcome(
     description: str,
     event_type: ExploreEventType,
     xp_profile: ExploreXpProfile,
+    reputation_change: int = 0,
     combat_outcome: str | None = None,
 ) -> ExplorationOutcomeDefinition:
     return ExplorationOutcomeDefinition(
@@ -148,6 +150,7 @@ def _outcome(
         description=description,
         event_type=event_type,
         xp_profile=xp_profile,
+        reputation_change=reputation_change,
         combat_outcome=combat_outcome,
     )
 
@@ -466,10 +469,11 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="Small Victory Shared",
                             description=(
-                                "You split the find instead of hoarding it. The meal is smaller, but word of your choice spreads fast in a place where kindness is rare."
+                                "You split the find instead of clutching it all for yourself. Nobody eats well, but in a district like this, people remember a soul who still knows how to share."
                             ),
                             event_type="reward",
                             xp_profile="approach_high",
+                            reputation_change=2,
                         ),
                     ),
                     _option(
@@ -479,10 +483,11 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="Hard Choice, Hard Street",
                             description=(
-                                "You snatch the ration and vanish before hunger turns into knives. Survival comes first, even when the guilt stays with you."
+                                "You grab the ration and disappear before hunger turns into knives. You stay fed a little longer, but the look left behind follows you."
                             ),
                             event_type="choice",
                             xp_profile="approach_base",
+                            reputation_change=-2,
                         ),
                     ),
                     _option(
@@ -535,10 +540,11 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="The Warning Holds",
                             description=(
-                                "You pass the warning through doorways and cookfires until the whole stretch is ready. The panic never fully takes root."
+                                "You pass the warning from doorway to doorway until the whole stretch is awake. Panic still stirs, but it never gets to own the block."
                             ),
                             event_type="reward",
                             xp_profile="approach_base",
+                            reputation_change=2,
                         ),
                     ),
                     _option(
@@ -548,7 +554,7 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="Noise in the District",
                             description=(
-                                "You let the rumor move without you. Sometimes the street throws too many dangers at once, and choosing one means leaving another behind."
+                                "You let the rumor drift on without you. Around here, every alley wants something, and nobody has enough strength for all of it."
                             ),
                             event_type="flavor",
                             xp_profile="approach_low",
@@ -578,10 +584,11 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="The Hollow Breaks First",
                             description=(
-                                "You hit the weak hollow before fear can spread. The clash is ugly and close, but the block breathes easier when it is over."
+                                "You hit the weak hollow before fear can spread. It is quick, filthy work, but the lane breathes easier when it's over."
                             ),
                             event_type="combat",
                             xp_profile="combat_win",
+                            reputation_change=2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -592,10 +599,11 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="Danger Redirected",
                             description=(
-                                "You bait the creature away from the homes and buy the residents a few precious quiet minutes. In these streets, that counts for something."
+                                "You pull the creature away from the homes and buy the block a few precious minutes of quiet. In these streets, that counts."
                             ),
                             event_type="choice",
                             xp_profile="approach_base",
+                            reputation_change=2,
                         ),
                     ),
                     _option(
@@ -605,10 +613,11 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="The Block Stands Ready",
                             description=(
-                                "You shout the warning early enough that doors slam shut and lanterns go dark. Nobody celebrates, but nobody gets caught unprepared either."
+                                "You shout the warning before the danger lands. Doors slam, lamps go dark, and the block rides out the worst of it standing."
                             ),
                             event_type="reward",
                             xp_profile="approach_base",
+                            reputation_change=2,
                         ),
                     ),
                 ),
@@ -662,10 +671,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="You Find the Hideout",
                             description=(
-                                "You stay patient and catch the stash site without exposing yourself. What you learn could change more than one hungry night."
+                                "You stay patient and catch the stash point without tipping your hand. That kind of patience can feed more than one empty night."
                             ),
                             event_type="reward",
                             xp_profile="approach_high",
+                            reputation_change=2,
                         ),
                     ),
                     _option(
@@ -675,10 +685,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="Collector Put Down",
                             description=(
-                                "You strike before the collector can call for help. It turns into a fast, dirty clash in the alley, but you are the one still standing at the end."
+                                "You strike before the collector can bark for help. The alley turns mean in a heartbeat, but you're the one left standing."
                             ),
                             event_type="combat",
                             xp_profile="combat_win",
+                            reputation_change=2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -698,10 +709,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="The Crowd Holds the Line",
                             description=(
-                                "You turn fear into momentum. The collector realizes the block is no longer an easy meal and backs down before the pressure breaks into open violence."
+                                "You turn fear into backbone. Once the collector sees the whole stretch stop bowing, he decides this debt is not worth bleeding for."
                             ),
                             event_type="reward",
                             xp_profile="approach_high",
+                            reputation_change=5,
                         ),
                     ),
                     _option(
@@ -711,10 +723,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="You Hold the Corner",
                             description=(
-                                "You absorb the first surge of violence yourself and keep the vendor alive through the worst of it. It hurts, but the block sees exactly who stood firm."
+                                "You take the first hit so the vendor does not have to. It hurts like hell, but nobody on that corner forgets who held the line."
                             ),
                             event_type="combat",
                             xp_profile="combat_lose",
+                            reputation_change=2,
                             combat_outcome="Setback",
                         ),
                     ),
@@ -766,10 +779,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="Mercy Before Escape",
                             description=(
-                                "You get the wounded soul moving before the alley can fully close around you. It is messy, desperate work, but you pull it off."
+                                "You get the wounded soul moving before the alley seals shut. It is clumsy, desperate work, but you drag both of you through it."
                             ),
                             event_type="reward",
                             xp_profile="approach_base",
+                            reputation_change=2,
                         ),
                     ),
                     _option(
@@ -779,10 +793,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="Ambushers Broken",
                             description=(
-                                "You use the alley's own shape against the ambushers and break their rush before it can become a beating in the dark."
+                                "You use the alley against the ambushers and break their rush before it becomes a beating in the dark."
                             ),
                             event_type="combat",
                             xp_profile="combat_win",
+                            reputation_change=2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -802,10 +817,11 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
                         outcome=_outcome(
                             title="You Break the Setup",
                             description=(
-                                "You move at the right moment and scatter the trap before it fully closes. The alley erupts, but the people marked for it get their way out."
+                                "You move at the exact right moment and smash the setup before it snaps shut. The alley erupts, but the people marked for it get out."
                             ),
                             event_type="combat",
                             xp_profile="combat_win",
+                            reputation_change=2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -870,10 +886,11 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                         outcome=_outcome(
                             title="Quick Hands, Hard-Won Prize",
                             description=(
-                                "You take the best of the stash before the alley closes around you. It is not clean, but the payoff hits harder than an ordinary night in Rukongai."
+                                "You snatch the best of the stash before the alley folds in on itself. It is not pretty, but it beats going hungry."
                             ),
                             event_type="reward",
                             xp_profile="special_base",
+                            reputation_change=-2,
                         ),
                     ),
                     _option(
@@ -883,10 +900,11 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                         outcome=_outcome(
                             title="You Hold the Cache",
                             description=(
-                                "You plant your feet and fight for the hidden stash when others rush in. The clash is brutal and close, but the reward is real if you endure it."
+                                "You plant your feet and fight for the hidden stash when the rush comes. It is brutal, loud, and exactly the kind of thing the district talks about after."
                             ),
                             event_type="combat",
                             xp_profile="special_combat_win",
+                            reputation_change=-2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -927,10 +945,11 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                         outcome=_outcome(
                             title="Nest Broken Open",
                             description=(
-                                "You hit the nest head-on and break it apart under pressure. The reward is bigger than a normal clash, but the risk was real from the first step."
+                                "You hit the nest head-on and tear it apart under a rain of bad reiatsu. The block will sleep easier for it, even if you do not."
                             ),
                             event_type="combat",
                             xp_profile="special_combat_win",
+                            reputation_change=2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -985,10 +1004,11 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                         outcome=_outcome(
                             title="Courier Broken, Street Watching",
                             description=(
-                                "You strike the courier route before it can slip away. The score is big, but the whole block will remember the risk you took to get it."
+                                "You smash the courier lane before it can slip through your fingers. The score is real, and so is the trouble your name will stir after."
                             ),
                             event_type="combat",
                             xp_profile="special_combat_win",
+                            reputation_change=-2,
                             combat_outcome="Victory",
                         ),
                     ),
@@ -999,10 +1019,11 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                         outcome=_outcome(
                             title="You Peel Off the Best Cut",
                             description=(
-                                "You let the route expose itself fully, then strip away its best prize at the right moment. It is a clean score by Rukongai standards."
+                                "You tail the lane until it opens up, then peel off the best cut at the perfect moment. Clean for Rukongai, dirty everywhere else."
                             ),
                             event_type="reward",
                             xp_profile="special_high",
+                            reputation_change=-2,
                         ),
                     ),
                     _option(
@@ -1071,7 +1092,7 @@ LOCATION_EXPLORATION_DEFINITIONS = {
         location_key="rukongai_streets",
         menu_title="Rukongai Streets",
         menu_description=(
-            "Nothing comes easy in these streets. Pick your next move carefully and chase a small edge before the district swallows the chance."
+            "The streets never hand you anything. Keep your head up, pick your move, and try to carve one good break out of the night."
         ),
         menu_footer='"If miracles only happen once, what are they called the second time?"',
         approach_pool=RUKONGAI_STREETS_APPROACHES,
