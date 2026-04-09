@@ -38,6 +38,20 @@ PLAYER_PROFILE_COLUMNS = """
 """
 
 
+async def has_legacy_discord_user_id_column(connection) -> bool:
+    return await connection.fetchval(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'player_profiles'
+              AND column_name = 'discord_user_id'
+        )
+        """
+    )
+
+
 async def get_player_profile(pool: Pool | None, user_id: int) -> PlayerProfile | None:
     if pool is None:
         return None
@@ -65,52 +79,104 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
     trait = roll_random_soul_trait()
 
     async with pool.acquire() as connection:
-        record = await connection.fetchrow(
-            f"""
-            INSERT INTO player_profiles (
+        has_legacy_column = await has_legacy_discord_user_id_column(connection)
+
+        if has_legacy_column:
+            record = await connection.fetchrow(
+                f"""
+                INSERT INTO player_profiles (
+                    discord_user_id,
+                    user_id,
+                    race,
+                    rank,
+                    level,
+                    xp,
+                    hp_current,
+                    hp_max,
+                    stamina_current,
+                    stamina_max,
+                    mana_current,
+                    mana_max,
+                    power,
+                    defense,
+                    speed,
+                    reiatsu,
+                    trait,
+                    location
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9,
+                    $10, $11, $12, $13, $14, $15, $16, $17, $18
+                )
+                ON CONFLICT (user_id) DO NOTHING
+                RETURNING {PLAYER_PROFILE_COLUMNS}
+                """,
+                str(user_id),
                 user_id,
-                race,
-                rank,
-                level,
-                xp,
-                hp_current,
-                hp_max,
-                stamina_current,
-                stamina_max,
-                mana_current,
-                mana_max,
-                power,
-                defense,
-                speed,
-                reiatsu,
-                trait,
-                location
+                STARTING_RACE,
+                STARTING_RANK,
+                STARTING_LEVEL,
+                STARTING_XP,
+                STARTING_HP,
+                STARTING_HP,
+                STARTING_STAMINA,
+                STARTING_STAMINA,
+                STARTING_MANA,
+                STARTING_MANA,
+                0,
+                0,
+                0,
+                0,
+                trait.key,
+                DEFAULT_LOCATION_KEY,
             )
-            VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9,
-                $10, $11, $12, $13, $14, $15, $16, $17
+        else:
+            record = await connection.fetchrow(
+                f"""
+                INSERT INTO player_profiles (
+                    user_id,
+                    race,
+                    rank,
+                    level,
+                    xp,
+                    hp_current,
+                    hp_max,
+                    stamina_current,
+                    stamina_max,
+                    mana_current,
+                    mana_max,
+                    power,
+                    defense,
+                    speed,
+                    reiatsu,
+                    trait,
+                    location
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9,
+                    $10, $11, $12, $13, $14, $15, $16, $17
+                )
+                ON CONFLICT (user_id) DO NOTHING
+                RETURNING {PLAYER_PROFILE_COLUMNS}
+                """,
+                user_id,
+                STARTING_RACE,
+                STARTING_RANK,
+                STARTING_LEVEL,
+                STARTING_XP,
+                STARTING_HP,
+                STARTING_HP,
+                STARTING_STAMINA,
+                STARTING_STAMINA,
+                STARTING_MANA,
+                STARTING_MANA,
+                0,
+                0,
+                0,
+                0,
+                trait.key,
+                DEFAULT_LOCATION_KEY,
             )
-            ON CONFLICT (user_id) DO NOTHING
-            RETURNING {PLAYER_PROFILE_COLUMNS}
-            """,
-            user_id,
-            STARTING_RACE,
-            STARTING_RANK,
-            STARTING_LEVEL,
-            STARTING_XP,
-            STARTING_HP,
-            STARTING_HP,
-            STARTING_STAMINA,
-            STARTING_STAMINA,
-            STARTING_MANA,
-            STARTING_MANA,
-            0,
-            0,
-            0,
-            0,
-            trait.key,
-            DEFAULT_LOCATION_KEY,
-        )
 
         if record is None:
             existing_profile = await connection.fetchrow(
