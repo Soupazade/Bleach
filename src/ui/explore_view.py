@@ -77,7 +77,6 @@ def build_explore_started_embed(
         name="Timing",
         value=(
             f"Approach: **{approach.label}**\n"
-            f"It Wraps In: **{approach.duration_label}**\n"
             f"Ends: {discord.utils.format_dt(exploration.end_time, 'R')}"
         ),
         inline=True,
