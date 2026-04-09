@@ -38,5 +38,5 @@ def register_profile_command(bot: "BleachBot") -> None:
         )
         embed = build_profile_embed(player, interaction.user, "overview")
 
-        await interaction.response.send_message(embed=embed, view=view)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()
