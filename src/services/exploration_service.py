@@ -882,6 +882,11 @@ async def _finalize_combat_resolution(
         ),
         "mana_current": max(0, min(combat.player_mana_current, player.mana_max)),
     }
+    if combat_outcome == "Setback":
+        # TODO: Let future status-effect systems consume and clear this setback hook.
+        player_updates["has_minor_setback"] = True
+        player_updates["setback_source"] = combat.encounter_title
+        player_updates["setback_at"] = datetime.now(timezone.utc)
     updated_player_record = await update_player_record(connection, combat.user_id, player_updates)
     updated_player = PlayerProfile.from_record(updated_player_record)
     await delete_active_exploration_combat(connection, combat.user_id)
@@ -1637,6 +1642,11 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
             + "\n"
             f"Level: **{resolution.player.level}**\n"
             f"XP Progress: **{resolution.player.xp}**"
+            + (
+                "\nAftermath: **Minor setback carried forward**"
+                if resolution.combat_outcome == "Setback" and resolution.player.has_minor_setback
+                else ""
+            )
         ),
         inline=True,
     )

@@ -99,10 +99,22 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
         value=(
             f"HP: **{profile.hp_current}/{profile.hp_max}**\n"
             f"Stamina: **{profile.stamina_current}/{profile.stamina_max}**\n"
-            f"Mana: **{profile.mana_current}/{profile.mana_max}**"
+            f"Mana: **{profile.mana_current}/{profile.mana_max}**\n"
+            f"Minor Setback: **{'Active' if profile.has_minor_setback else 'None'}**"
         ),
         inline=False,
     )
+    if profile.has_minor_setback:
+        embed.add_field(
+            name="Setback Hook",
+            value=(
+                f"Source: **{profile.setback_source or 'Unknown'}**\n"
+                f"When: **{discord.utils.format_dt(profile.setback_at, 'R')}**"
+                if profile.setback_at is not None
+                else f"Source: **{profile.setback_source or 'Unknown'}**"
+            ),
+            inline=False,
+        )
     embed.add_field(
         name="Rest",
         value=(

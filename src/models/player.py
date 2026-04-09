@@ -31,6 +31,9 @@ class PlayerProfile:
     trait: str
     location: str
     rukongai_rep: int
+    has_minor_setback: bool
+    setback_source: str | None
+    setback_at: datetime | None
     is_resting: bool
     rest_start_time: datetime | None
     rest_stamina_snapshot: int | None
@@ -69,6 +72,9 @@ class PlayerProfile:
             trait=str(record["trait"]),
             location=str(record["location"]),
             rukongai_rep=clamp_reputation(int(record["rukongai_rep"])),
+            has_minor_setback=bool(record["has_minor_setback"]),
+            setback_source=str(record["setback_source"]) if record["setback_source"] is not None else None,
+            setback_at=record["setback_at"],
             is_resting=bool(record["is_resting"]),
             rest_start_time=record["rest_start_time"],
             rest_stamina_snapshot=record["rest_stamina_snapshot"],
