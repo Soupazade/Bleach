@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from src.commands import register_commands
 from src.database import create_pool, ensure_schema
 from src.services.exploration_service import restore_exploration_tasks
+from src.ui.exploration_combat_view import ExplorationCombatView
 from src.ui.exploration_choice_view import ExplorationChoiceView
 
 
@@ -53,6 +54,7 @@ class BleachBot(discord.Client):
         self.db_pool = await create_pool()
         await ensure_schema(self.db_pool)
         self.add_view(ExplorationChoiceView(self))
+        self.add_view(ExplorationCombatView(self))
         await restore_exploration_tasks(self)
 
         if self.guild_id is not None:

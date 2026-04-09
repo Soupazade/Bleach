@@ -72,6 +72,43 @@ CREATE TABLE IF NOT EXISTS active_exploration_choices (
 );
 """
 
+CREATE_ACTIVE_EXPLORATION_COMBATS_TABLE = """
+CREATE TABLE IF NOT EXISTS active_exploration_combats (
+    user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT,
+    location TEXT NOT NULL,
+    approach TEXT NOT NULL,
+    encounter_title TEXT NOT NULL,
+    encounter_description TEXT NOT NULL,
+    resolution_title TEXT NOT NULL,
+    resolution_description TEXT NOT NULL,
+    enemy_name TEXT NOT NULL,
+    enemy_hp_current INTEGER NOT NULL,
+    enemy_hp_max INTEGER NOT NULL,
+    enemy_power INTEGER NOT NULL,
+    enemy_defense INTEGER NOT NULL,
+    enemy_speed INTEGER NOT NULL,
+    reward_xp_win INTEGER NOT NULL,
+    reward_xp_lose INTEGER NOT NULL,
+    reputation_change INTEGER NOT NULL DEFAULT 0,
+    player_hp_current INTEGER NOT NULL,
+    player_hp_max INTEGER NOT NULL,
+    player_mana_current INTEGER NOT NULL,
+    player_mana_max INTEGER NOT NULL,
+    player_power INTEGER NOT NULL,
+    player_defense INTEGER NOT NULL,
+    player_speed INTEGER NOT NULL,
+    player_reiatsu INTEGER NOT NULL,
+    round_number INTEGER NOT NULL DEFAULT 1,
+    focus_bonus INTEGER NOT NULL DEFAULT 0,
+    guard_active BOOLEAN NOT NULL DEFAULT FALSE,
+    last_round_summary TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
 CREATE_PLAYER_NPC_PROGRESS_TABLE = """
 CREATE TABLE IF NOT EXISTS player_npc_progress (
     user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
@@ -125,6 +162,12 @@ ON active_explorations (end_time);
 CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_active_exploration_choices_message_id
 ON active_exploration_choices (message_id)
+WHERE message_id IS NOT NULL;
+"""
+
+CREATE_ACTIVE_EXPLORATION_COMBATS_MESSAGE_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_exploration_combats_message_id
+ON active_exploration_combats (message_id)
 WHERE message_id IS NOT NULL;
 """
 
@@ -260,5 +303,7 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         for statement in ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS:
             await connection.execute(statement)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX)
+        await connection.execute(CREATE_ACTIVE_EXPLORATION_COMBATS_TABLE)
+        await connection.execute(CREATE_ACTIVE_EXPLORATION_COMBATS_MESSAGE_ID_INDEX)
         await connection.execute(CREATE_PLAYER_NPC_PROGRESS_TABLE)
         await connection.execute(CREATE_PLAYER_NPC_PROGRESS_LOOKUP_INDEX)

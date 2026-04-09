@@ -11,6 +11,7 @@ from src.services.exploration_service import (
     build_exploration_result_embed,
     get_pending_exploration_choice_by_message,
 )
+from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -142,6 +143,13 @@ class ExplorationChoiceView(discord.ui.View):
             await interaction.response.edit_message(
                 embed=build_exploration_choice_embed(result.prompt),
                 view=ExplorationChoiceView(self.bot, result.prompt),
+            )
+            return
+
+        if result.status == "combat" and result.combat is not None:
+            await interaction.response.edit_message(
+                embed=build_exploration_combat_embed(result.combat),
+                view=ExplorationCombatView(self.bot),
             )
             return
 

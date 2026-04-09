@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 
 from src.data.exploration import get_random_explore_options_for_location
+from src.services.combat_service import get_active_exploration_combat
 from src.services.exploration_service import (
     get_active_exploration,
     get_pending_exploration_prompt,
@@ -14,6 +15,7 @@ from src.services.exploration_service import (
 )
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
 from src.ui.explore_view import ExploreView, build_explore_active_embed, build_explore_menu_embed
+from src.ui.exploration_combat_view import build_active_combat_embed
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -63,12 +65,20 @@ def register_explore_command(bot: "BleachBot") -> None:
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
+        active_combat = await get_active_exploration_combat(bot.db_pool, interaction.user.id)
+        if active_combat is not None:
+            await interaction.response.send_message(
+                embed=build_active_combat_embed(active_combat),
+                ephemeral=True,
+            )
+            return
+
         active_exploration = await get_active_exploration(bot.db_pool, interaction.user.id)
         now = datetime.now(timezone.utc)
         if active_exploration is not None:
             if active_exploration.end_time > now:
                 await interaction.response.send_message(
-                    embed=build_explore_active_embed(active_exploration),
+                    embed=build_explore_active_embed(player, active_exploration),
                     ephemeral=True,
                 )
                 return
@@ -87,7 +97,11 @@ def register_explore_command(bot: "BleachBot") -> None:
                     description=(
                         "Your previous exploration had already finished, so I posted the outcome in the channel."
                         if resolution.status == "instant"
-                        else "Your previous exploration had already finished, so I posted a street decision in the channel."
+                        else (
+                            "Your previous exploration had already finished, so I posted a street decision in the channel."
+                            if resolution.status == "choice_prompt"
+                            else "Your previous exploration had already finished, so I posted the combat encounter in the channel."
+                        )
                     ),
                     color=discord.Color.green(),
                 ),

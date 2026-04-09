@@ -243,7 +243,11 @@ class ExploreView(discord.ui.View):
                     description=(
                         "That run had already finished. I posted the outcome in the channel."
                         if resolution.status == "instant"
-                        else "That run had already finished. I posted the next street call in the channel."
+                        else (
+                            "That run had already finished. I posted the next street call in the channel."
+                            if resolution.status == "choice_prompt"
+                            else "That run had already finished. I posted the fight in the channel."
+                        )
                     ),
                     color=discord.Color.green(),
                 ),

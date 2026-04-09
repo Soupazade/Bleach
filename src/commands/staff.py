@@ -65,6 +65,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
     trait = profile.trait_data
     active_exploration = debug_state.active_exploration
     pending_choice = debug_state.pending_choice
+    active_combat = debug_state.active_combat
 
     embed = discord.Embed(
         title="Player State",
@@ -120,7 +121,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
         inline=False,
     )
 
-    if active_exploration is None and pending_choice is None:
+    if active_exploration is None and pending_choice is None and active_combat is None:
         exploration_value = "No active exploration or pending street decision."
     elif active_exploration is not None:
         approach = get_explore_approach(active_exploration.approach)
@@ -132,7 +133,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
             f"Remaining: **{get_exploration_remaining_time(active_exploration)}**\n"
             f"Task Tracked: **{'Yes' if active_exploration.user_id in bot.exploration_tasks else 'No'}**"
         )
-    else:
+    elif pending_choice is not None:
         approach = get_explore_approach(pending_choice.approach)
         exploration_value = (
             f"Approach: **{approach.name}**\n"
@@ -141,7 +142,24 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
             f"Channel: <#{pending_choice.channel_id}>\n"
             f"Message: **{pending_choice.message_id or 'Not posted'}**"
         )
+    else:
+        exploration_value = "Exploration timer is clear. Only the active combat state remains."
     embed.add_field(name="Exploration", value=exploration_value, inline=False)
+
+    if active_combat is not None:
+        embed.add_field(
+            name="Combat",
+            value=(
+                f"Encounter: **{active_combat.encounter_title}**\n"
+                f"Enemy: **{active_combat.enemy_name}**\n"
+                f"Round: **{active_combat.round_number}/4**\n"
+                f"Player HP: **{active_combat.player_hp_current}/{active_combat.player_hp_max}**\n"
+                f"Enemy HP: **{active_combat.enemy_hp_current}/{active_combat.enemy_hp_max}**\n"
+                f"Channel: <#{active_combat.channel_id}>\n"
+                f"Message: **{active_combat.message_id or 'Not posted'}**"
+            ),
+            inline=False,
+        )
     return embed
 
 
@@ -404,6 +422,11 @@ def register_staff_commands(bot: "BleachBot") -> None:
             inline=True,
         )
         embed.add_field(
+            name="Combat Cleared",
+            value="Yes" if result.cleared_combat else "No",
+            inline=True,
+        )
+        embed.add_field(
             name="Rest Cleared",
             value="Yes" if result.cleared_resting else "No",
             inline=True,
@@ -492,6 +515,9 @@ def register_staff_commands(bot: "BleachBot") -> None:
         if resolution.status == "instant" and resolution.resolution is not None:
             embed.add_field(name="Outcome", value=f"**{resolution.resolution.title}**", inline=True)
             embed.add_field(name="XP Gained", value=f"**{resolution.resolution.xp_gained}**", inline=True)
+        elif resolution.status == "combat_prompt" and resolution.combat is not None:
+            embed.add_field(name="Outcome", value="**Combat Encounter Posted**", inline=True)
+            embed.add_field(name="Enemy", value=f"**{resolution.combat.enemy_name}**", inline=True)
         elif resolution.prompt is not None:
             embed.add_field(name="Outcome", value="**Street Decision Posted**", inline=True)
             embed.add_field(name="Step", value=f"**{resolution.prompt.step_number}/{resolution.prompt.total_steps}**", inline=True)
