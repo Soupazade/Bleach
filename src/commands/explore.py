@@ -14,7 +14,14 @@ from src.services.exploration_service import (
     resolve_and_post_exploration,
 )
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
-from src.ui.explore_view import ExploreView, build_explore_active_embed, build_explore_menu_embed
+from src.ui.explore_view import (
+    ExploreView,
+    build_explore_active_embed,
+    build_explore_menu_embed,
+    build_explore_pending_embed,
+    build_explore_resolution_posted_embed,
+    build_explore_resting_embed,
+)
 from src.ui.exploration_combat_view import build_active_combat_embed
 
 if TYPE_CHECKING:
@@ -42,25 +49,19 @@ def register_explore_command(bot: "BleachBot") -> None:
 
         if player.is_resting:
             rest_minutes, recovered_stamina = get_rest_status(player)
-            embed = discord.Embed(
-                title="You Are Resting",
-                description=build_resting_block_message(player, rest_minutes, recovered_stamina),
-                color=discord.Color.orange(),
+            embed = build_explore_resting_embed(
+                build_resting_block_message(player, rest_minutes, recovered_stamina)
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         pending_prompt = await get_pending_exploration_prompt(bot.db_pool, interaction.user.id)
         if pending_prompt is not None:
-            embed = discord.Embed(
-                title="Street Decision Waiting",
-                description=(
-                    "You still have an unresolved exploration decision waiting in the channel.\n"
-                    f"Decision: **{pending_prompt.event_title}**\n"
-                    f"Step: **{pending_prompt.step_number}/{pending_prompt.total_steps}**\n"
-                    f"Channel: <#{pending_prompt.session.channel_id}>"
-                ),
-                color=discord.Color.orange(),
+            embed = build_explore_pending_embed(
+                pending_prompt.event_title,
+                pending_prompt.step_number,
+                pending_prompt.total_steps,
+                pending_prompt.session.channel_id,
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -92,19 +93,7 @@ def register_explore_command(bot: "BleachBot") -> None:
                 return
 
             await interaction.response.send_message(
-                embed=discord.Embed(
-                    title="Previous Exploration Posted",
-                    description=(
-                        "Your previous exploration had already finished, so I posted the outcome in the channel."
-                        if resolution.status == "instant"
-                        else (
-                            "Your previous exploration had already finished, so I posted a street decision in the channel."
-                            if resolution.status == "choice_prompt"
-                            else "Your previous exploration had already finished, so I posted the combat encounter in the channel."
-                        )
-                    ),
-                    color=discord.Color.green(),
-                ),
+                embed=build_explore_resolution_posted_embed(resolution.status),
                 ephemeral=True,
             )
             return

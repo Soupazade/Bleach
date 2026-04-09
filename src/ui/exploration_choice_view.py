@@ -11,6 +11,12 @@ from src.services.exploration_service import (
     build_exploration_result_embed,
     get_pending_exploration_choice_by_message,
 )
+from src.ui.explore_embed_style import (
+    add_explore_divider,
+    build_explore_info_lines,
+    format_option_preview,
+    get_explore_color,
+)
 from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
 
 if TYPE_CHECKING:
@@ -28,10 +34,12 @@ BUTTON_STYLE_MAP = {
 def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord.Embed:
     exploration = prompt.session.to_active_exploration()
     approach = get_explore_approach(prompt.session.approach)
-    color = discord.Color.from_rgb(88, 112, 168)
+    color = get_explore_color("choice")
     footer_text = "Choose fast. Rukongai never waits for anyone."
+    title_prefix = "🟨"
     if prompt.prompt_kind == "special_offer":
-        color = discord.Color.dark_orange()
+        color = get_explore_color("special")
+        title_prefix = "🟪"
         if prompt.stamina_cost > 0:
             footer_text = (
                 f"Engaging costs an extra {prompt.stamina_cost} stamina "
@@ -42,33 +50,44 @@ def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord
         else:
             footer_text = "Engaging costs extra stamina."
     elif prompt.prompt_kind == "special_event":
-        color = discord.Color.red()
+        color = get_explore_color("special")
+        title_prefix = "🟪"
         footer_text = "The opening turned ugly fast."
     elif prompt.prompt_kind == "npc_event":
-        color = discord.Color.from_rgb(130, 108, 72)
+        color = get_explore_color("choice")
+        title_prefix = "🟨"
         footer_text = "In Rukongai, the same faces find you again."
 
     embed = discord.Embed(
-        title=prompt.event_title,
+        title=f"{title_prefix} {prompt.event_title}",
         description=prompt.description,
         color=color,
     )
     embed.add_field(
-        name="Decision",
-        value=(
-            f"Step: **{prompt.step_number}/{prompt.total_steps}**\n"
-            f"Moment: **{prompt.step_title}**"
+        name="What do you do?",
+        value="\n".join(
+            format_option_preview(option.label, option.style)
+            for option in prompt.options
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Current State",
+        value=build_explore_info_lines(
+            f"🧭 Moment: **{prompt.step_title}**",
+            f"⏱ Step: **{prompt.step_number}/{prompt.total_steps}**",
         ),
         inline=True,
     )
     embed.add_field(
-        name="Street Run",
-        value=(
-            f"Approach: **{approach.label}**\n"
-            f"Started: {discord.utils.format_dt(exploration.start_time, 'R')}"
+        name="Timing",
+        value=build_explore_info_lines(
+            f"🧭 Approach: **{approach.label}**",
+            f"🕓 Started: {discord.utils.format_dt(exploration.start_time, 'R')}",
         ),
         inline=True,
     )
+    add_explore_divider(embed)
     embed.set_footer(text=footer_text)
     return embed
 

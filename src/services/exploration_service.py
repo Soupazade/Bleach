@@ -55,11 +55,11 @@ from src.services.reputation_service import (
     format_reputation_change_text,
     format_reputation_xp_text,
     get_location_reputation_field,
-    get_location_reputation_label,
     get_location_reputation_title,
     get_location_reputation_value,
     get_reputation_modifiers,
 )
+from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -1602,7 +1602,6 @@ async def advance_exploration_combat(
 def build_exploration_result_embed(resolution: ExplorationResolution) -> discord.Embed:
     location = get_location_definition(resolution.exploration.location)
     approach = get_explore_approach(resolution.exploration.approach)
-    reputation_label = get_location_reputation_label(resolution.exploration.location)
     reputation_title = get_location_reputation_title(
         resolution.player,
         resolution.exploration.location,
@@ -1611,64 +1610,85 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         resolution.reputation_xp_modifier_pct,
         reputation_title,
     )
-
-    color_by_event = {
-        "reward": discord.Color.gold(),
-        "combat": discord.Color.red(),
-        "choice": discord.Color.blue(),
-        "flavor": discord.Color.dark_teal(),
+    color_map = {
+        "reward": get_explore_color("reward"),
+        "choice": get_explore_color("choice"),
+        "combat": get_explore_color("combat"),
+        "flavor": get_explore_color("flavor"),
     }
+    title_prefix = {
+        "reward": "🟩",
+        "choice": "🟨",
+        "combat": "⚔️",
+        "flavor": "⚪",
+    }
+    embed_title = f"{title_prefix[resolution.event_type]} {resolution.title}"
+    if resolution.event_type == "combat" and resolution.combat_outcome is not None:
+        embed_title = f"⚔️ {resolution.combat_outcome} — {resolution.title}"
 
     embed = discord.Embed(
-        title=resolution.title,
+        title=embed_title,
         description=resolution.description,
-        color=color_by_event[resolution.event_type],
+        color=color_map[resolution.event_type],
     )
     embed.add_field(
         name="This Run",
-        value=(
-            f"Location: **{location.name}**\n"
-            f"Approach: **{approach.label}**\n"
-            f"Duration: **{approach.duration_minutes} minute(s)**\n"
-            f"{reputation_label}: **{reputation_title}**"
+        value=build_explore_info_lines(
+            f"📍 Location: {location.name}",
+            f"🧭 Approach: {approach.label}",
+            f"⏱ Duration: {approach.duration_minutes} minutes",
+            f"🎭 Reputation: {reputation_title}",
         ),
         inline=True,
     )
     embed.add_field(
         name="What Came Of It",
-        value=(
-            f"XP Gained: **{resolution.xp_gained}**"
-            + (f" {xp_modifier_text}" if xp_modifier_text is not None else "")
-            + "\n"
-            f"Level: **{resolution.player.level}**\n"
-            f"XP Progress: **{resolution.player.xp}**"
-            + (
-                "\nAftermath: **Minor setback carried forward**"
-                if resolution.combat_outcome == "Setback" and resolution.player.has_minor_setback
-                else ""
-            )
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="Your Name In The District",
-        value=(
-            f"{reputation_label}: **{reputation_title}**\n"
-            f"Shift This Run: {format_reputation_change_text(resolution.reputation_change)}"
+        value=build_explore_info_lines(
+            "🎯 XP Gained: **"
+            + str(resolution.xp_gained)
+            + "**"
+            + (f" {xp_modifier_text}" if xp_modifier_text is not None else ""),
+            f"📈 Level: **{resolution.player.level}**",
+            f"📈 XP Progress: **{resolution.player.xp}**",
+            f"🎭 Shift This Run: {format_reputation_change_text(resolution.reputation_change)}",
         ),
         inline=False,
     )
 
     if resolution.combat_outcome is not None:
-        embed.add_field(name="Combat Result", value=f"**{resolution.combat_outcome}**", inline=False)
+        embed.add_field(
+            name="Combat Result",
+            value=build_explore_info_lines(
+                f"⚔ Combat Result: **{resolution.combat_outcome}**",
+                f"🎭 Reputation: {reputation_title}",
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Resources",
+            value=build_explore_info_lines(
+                f"❤️ HP Remaining: **{resolution.player.hp_current}/{resolution.player.hp_max}**",
+                f"🔷 Mana Remaining: **{resolution.player.mana_current}/{resolution.player.mana_max}**",
+                f"⚡ Stamina Used This Run: **{approach.stamina_cost}**",
+            ),
+            inline=False,
+        )
+
+    if resolution.combat_outcome == "Setback" and resolution.player.has_minor_setback:
+        embed.add_field(
+            name="Status Effect",
+            value="✨ Minor Setback — a rough outcome is being carried forward for later systems.",
+            inline=False,
+        )
 
     if resolution.levels_gained > 0:
         embed.add_field(
             name="Level Up",
-            value=f"Your reiatsu swells. You climbed **{resolution.levels_gained}** level(s).",
+            value=f"📈 Your spiritual pressure rises. You climbed **{resolution.levels_gained}** level(s).",
             inline=False,
         )
 
+    add_explore_divider(embed)
     embed.set_footer(text="The streets remember what kind of soul you are.")
     return embed
 

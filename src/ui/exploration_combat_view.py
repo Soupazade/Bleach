@@ -9,6 +9,7 @@ from src.services.exploration_service import (
     build_exploration_result_embed,
 )
 from src.services.combat_service import get_active_exploration_combat_by_message
+from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -17,39 +18,42 @@ if TYPE_CHECKING:
 
 def build_exploration_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embed:
     embed = discord.Embed(
-        title=f"Combat | {combat.encounter_title}",
+        title=f"⚔️ {combat.encounter_title}",
         description=combat.encounter_description,
-        color=discord.Color.dark_red(),
+        color=get_explore_color("combat"),
     )
     embed.add_field(
-        name="You",
-        value=(
-            f"HP: **{combat.player_hp_current}/{combat.player_hp_max}**\n"
-            f"Mana: **{combat.player_mana_current}/{combat.player_mana_max}**\n"
-            f"Power: **{combat.player_power}** | Defense: **{combat.player_defense}**\n"
-            f"Speed: **{combat.player_speed}** | Reiatsu: **{combat.player_reiatsu}**"
+        name="Combatants",
+        value=build_explore_info_lines(
+            "You",
+            f"❤️ HP: **{combat.player_hp_current}/{combat.player_hp_max}**",
+            f"🔷 Mana: **{combat.player_mana_current}/{combat.player_mana_max}**",
+            "",
+            combat.enemy_name,
+            f"❤️ HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**",
         ),
         inline=True,
     )
     embed.add_field(
-        name=combat.enemy_name,
-        value=(
-            f"HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**\n"
-            f"Power: **{combat.enemy_power}**\n"
-            f"Defense: **{combat.enemy_defense}**\n"
-            f"Speed: **{combat.enemy_speed}**"
+        name="Current State",
+        value=build_explore_info_lines(
+            f"⚔ Round: **{combat.round_number}/4**",
+            f"🌀 Focus Bonus: **+{combat.focus_bonus}**",
+            f"🗡 Last Exchange: {combat.last_round_summary}",
         ),
         inline=True,
     )
     embed.add_field(
-        name="Round",
-        value=(
-            f"**{combat.round_number}/4**\n"
-            f"Focus Bonus: **+{combat.focus_bonus}**"
+        name="What do you do?",
+        value=build_explore_info_lines(
+            "⚔ Attack",
+            "🛡 Guard",
+            "🌀 Focus",
+            "🏃 Retreat",
         ),
         inline=False,
     )
-    embed.add_field(name="Last Exchange", value=combat.last_round_summary, inline=False)
+    add_explore_divider(embed)
     embed.set_footer(
         text="Attack presses the fight. Guard softens the next hit. Focus charges the next strike. Retreat gambles on speed."
     )
@@ -58,29 +62,30 @@ def build_exploration_combat_embed(combat: "ActiveExplorationCombat") -> discord
 
 def build_active_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embed:
     embed = discord.Embed(
-        title="You Are Already Fighting",
+        title="⚔️ The Fight Is Still Live",
         description=(
             f"Your run in **{combat.encounter_title}** has already turned into a live fight.\n"
             f"Channel: <#{combat.channel_id}>"
         ),
-        color=discord.Color.red(),
+        color=get_explore_color("combat"),
     )
     embed.add_field(
         name="Current State",
-        value=(
-            f"Enemy: **{combat.enemy_name}**\n"
-            f"Round: **{combat.round_number}/4**\n"
-            f"Your HP: **{combat.player_hp_current}/{combat.player_hp_max}**\n"
-            f"Enemy HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**"
+        value=build_explore_info_lines(
+            f"⚔ Enemy: **{combat.enemy_name}**",
+            f"⏱ Round: **{combat.round_number}/4**",
+            f"❤️ Your HP: **{combat.player_hp_current}/{combat.player_hp_max}**",
+            f"❤️ Enemy HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**",
         ),
         inline=False,
     )
     if combat.message_id is not None:
         embed.add_field(
-            name="Fight Message",
+            name="🕓 Fight Message",
             value=f"Message ID: **{combat.message_id}**",
             inline=False,
         )
+    add_explore_divider(embed)
     return embed
 
 
