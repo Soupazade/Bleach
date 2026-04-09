@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, Literal
 import discord
 from asyncpg import Connection, Pool, Record
 
-from src.data.exploration import get_explore_approach, get_location_event_pool
+from src.data.exploration import (
+    ExploreEventType,
+    ExplorationEventTemplate,
+    get_explore_approach,
+    get_location_event_pool,
+)
 from src.data.locations import get_location_definition
 from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
@@ -142,34 +147,56 @@ async def delete_active_exploration(connection: Connection, user_id: int) -> Non
     )
 
 
+def _format_event_description(
+    template: ExplorationEventTemplate,
+    exploration: ActiveExploration,
+) -> str:
+    approach = get_explore_approach(exploration.approach)
+    location = get_location_definition(exploration.location)
+    return template.description.format(
+        approach=approach.label,
+        location=location.name,
+    )
+
+
+def _weighted_event_type(exploration: ActiveExploration) -> ExploreEventType:
+    approach = get_explore_approach(exploration.approach)
+    event_types = tuple(approach.event_biases.keys())
+    weights = tuple(approach.event_biases.values())
+    return random.choices(event_types, weights=weights, k=1)[0]
+
+
 def _resolve_reward_event(exploration: ActiveExploration) -> tuple[str, str, int]:
     approach = get_explore_approach(exploration.approach)
     event_pool = get_location_event_pool(exploration.location)
-    description = random.choice(event_pool.reward_events)
+    event = random.choice(event_pool.reward_events)
     xp_gained = random.randint(approach.xp_min, approach.xp_max)
-    return "Reward Found", description, xp_gained
+    description = _format_event_description(event, exploration)
+    return event.title, description, xp_gained
 
 
 def _resolve_combat_event(exploration: ActiveExploration) -> tuple[str, str, int, str]:
+    approach = get_explore_approach(exploration.approach)
     event_pool = get_location_event_pool(exploration.location)
-    description = random.choice(event_pool.combat_events)
-    win_chance_by_approach = {
-        "cautious_search": 0.75,
-        "standard_patrol": 0.65,
-        "risky_push": 0.55,
+    event = random.choice(event_pool.combat_events)
+    description = _format_event_description(event, exploration)
+    win_chance_by_risk = {
+        "low": 0.75,
+        "medium": 0.64,
+        "high": 0.55,
     }
-    won = random.random() < win_chance_by_approach.get(exploration.approach, 0.65)
+    won = random.random() < win_chance_by_risk.get(approach.risk_tier, 0.64)
 
     if won:
         xp_gained = random.randint(12, 20)
         outcome = "Victory"
-        description = f"{description} You hold your ground and come out on top."
-        title = "Combat Encounter Won"
+        description = f"{description} You grit your teeth, answer the pressure head-on, and come out standing."
+        title = f"{event.title} Won"
     else:
         xp_gained = 5
         outcome = "Setback"
-        description = f"{description} You survive the clash, but it leaves your spirit rattled."
-        title = "Combat Encounter Lost"
+        description = f"{description} You survive, but the clash leaves you bruised, breathing hard, and reminded what these streets cost."
+        title = f"{event.title} Lost"
 
     return title, description, xp_gained, outcome
 
@@ -177,34 +204,38 @@ def _resolve_combat_event(exploration: ActiveExploration) -> tuple[str, str, int
 def _resolve_choice_event(exploration: ActiveExploration) -> tuple[str, str, int]:
     approach = get_explore_approach(exploration.approach)
     event_pool = get_location_event_pool(exploration.location)
-    description = random.choice(event_pool.choice_events)
+    event = random.choice(event_pool.choice_events)
     xp_floor = max(3, approach.xp_min - 1)
     xp_ceiling = max(xp_floor, approach.xp_max - 2)
     xp_gained = random.randint(xp_floor, xp_ceiling)
-    description = f"{description} Your instincts pay off and the path teaches you something useful."
-    return "A Choice in the Streets", description, xp_gained
+    description = (
+        f"{_format_event_description(event, exploration)} "
+        "Your read on the moment pays off, and the district teaches you something worth keeping."
+    )
+    return event.title, description, xp_gained
 
 
 def _resolve_flavor_event(exploration: ActiveExploration) -> tuple[str, str, int]:
     event_pool = get_location_event_pool(exploration.location)
-    description = random.choice(event_pool.flavor_events)
-    return "Quiet Passage", description, 0
+    event = random.choice(event_pool.flavor_events)
+    description = _format_event_description(event, exploration)
+    return event.title, description, 0
 
 
 def roll_exploration_event(
     exploration: ActiveExploration,
 ) -> tuple[Literal["reward", "combat", "choice", "flavor"], str, str, int, str | None]:
-    roll = random.random()
+    event_type = _weighted_event_type(exploration)
 
-    if roll < 0.40:
+    if event_type == "reward":
         title, description, xp_gained = _resolve_reward_event(exploration)
         return "reward", title, description, xp_gained, None
 
-    if roll < 0.70:
+    if event_type == "combat":
         title, description, xp_gained, outcome = _resolve_combat_event(exploration)
         return "combat", title, description, xp_gained, outcome
 
-    if roll < 0.90:
+    if event_type == "choice":
         title, description, xp_gained = _resolve_choice_event(exploration)
         return "choice", title, description, xp_gained, None
 
@@ -346,10 +377,10 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         color=color_by_event[resolution.event_type],
     )
     embed.add_field(
-        name="Patrol Details",
+        name="Street Run",
         value=(
             f"Location: **{location.name}**\n"
-            f"Approach: **{approach.name}**\n"
+            f"Approach: **{approach.label}**\n"
             f"Duration: **{approach.duration_minutes} minute(s)**"
         ),
         inline=True,

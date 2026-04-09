@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
+from src.data.exploration import get_random_explore_options_for_location
 from src.services.exploration_service import get_active_exploration, resolve_and_post_exploration
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
 from src.ui.explore_view import ExploreView, build_explore_active_embed, build_explore_menu_embed
@@ -71,7 +72,8 @@ def register_explore_command(bot: "BleachBot") -> None:
             )
             return
 
-        view = ExploreView(bot=bot, owner_id=interaction.user.id, player=player)
-        embed = build_explore_menu_embed(player)
+        approaches = get_random_explore_options_for_location(player.location)
+        view = ExploreView(bot=bot, owner_id=interaction.user.id, player=player, approaches=approaches)
+        embed = build_explore_menu_embed(player, approaches)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()

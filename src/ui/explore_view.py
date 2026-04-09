@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from src.data.exploration import get_explore_approach
+from src.data.exploration import ExploreApproachDefinition, get_explore_approach, get_location_exploration_definition
 from src.data.locations import get_location_definition
 from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
@@ -20,40 +20,17 @@ if TYPE_CHECKING:
     from src.main import BleachBot
 
 
-EXPLORE_SELECT_OPTIONS = (
-    {
-        "label": "Cautious Search",
-        "value": "cautious_search",
-        "description": "A short, careful 2 minute search",
-    },
-    {
-        "label": "Standard Patrol",
-        "value": "standard_patrol",
-        "description": "A balanced 3 minute patrol",
-    },
-    {
-        "label": "Risky Push",
-        "value": "risky_push",
-        "description": "A dangerous 4 minute push for better gains",
-    },
-    {
-        "label": "Withdraw",
-        "value": "withdraw",
-        "description": "Step back and do nothing for now",
-    },
-)
-
-
-def build_explore_menu_embed(player: PlayerProfile) -> discord.Embed:
+def build_explore_menu_embed(
+    player: PlayerProfile,
+    approaches: tuple[ExploreApproachDefinition, ...],
+) -> discord.Embed:
     location = player.location_data
+    location_exploration = get_location_exploration_definition(player.location)
 
     embed = discord.Embed(
-        title="Explore the District",
-        description=(
-            "The streets of Rukongai shift with danger, rumor, and opportunity. "
-            "Choose how you want to move through the district."
-        ),
-        color=discord.Color.from_rgb(42, 99, 255),
+        title=f"Explore | {location_exploration.menu_title}",
+        description=location_exploration.menu_description,
+        color=discord.Color.from_rgb(92, 122, 168),
     )
     embed.add_field(
         name="Current State",
@@ -65,15 +42,19 @@ def build_explore_menu_embed(player: PlayerProfile) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
-        name="Approaches",
-        value=(
-            "Cautious Search: **2m**, costs **10 stamina**\n"
-            "Standard Patrol: **3m**, costs **10 stamina**\n"
-            "Risky Push: **4m**, costs **10 stamina**"
+        name="Openings Right Now",
+        value="\n".join(
+            f"**{approach.dropdown_label}**\n{approach.menu_description}"
+            for approach in approaches
         ),
         inline=False,
     )
-    embed.set_footer(text="Timed actions replace flat cooldowns here.")
+    embed.add_field(
+        name="Cost",
+        value="Starting an exploration costs **10 stamina**. The timer itself is the pacing system.",
+        inline=False,
+    )
+    embed.set_footer(text=location_exploration.menu_footer)
     return embed
 
 
@@ -84,15 +65,15 @@ def build_explore_started_embed(player: PlayerProfile, exploration: ActiveExplor
     embed = discord.Embed(
         title="Exploration Underway",
         description=(
-            f"You begin a **{approach.name}** in **{location.name}**.\n"
-            f"{approach.flavor}"
+            f"You begin **{approach.label}** in **{location.name}**.\n"
+            f"{approach.intro_text}"
         ),
-        color=discord.Color.blue(),
+        color=discord.Color.from_rgb(109, 142, 196),
     )
     embed.add_field(
         name="Timing",
         value=(
-            f"Result In: **{approach.duration_minutes} minute(s)**\n"
+            f"Result In: **{approach.duration_label}**\n"
             f"Ends: {discord.utils.format_dt(exploration.end_time, 'R')}"
         ),
         inline=True,
@@ -112,13 +93,13 @@ def build_explore_active_embed(exploration: ActiveExploration) -> discord.Embed:
 
     embed = discord.Embed(
         title="Exploration Already Active",
-        description="You are already out in the district. Hold your nerve and let the patrol finish.",
+        description="You are already out in the district. Hold your nerve and let the run finish.",
         color=discord.Color.orange(),
     )
     embed.add_field(
-        name="Current Patrol",
+        name="Current Run",
         value=(
-            f"Approach: **{approach.name}**\n"
+            f"Approach: **{approach.label}**\n"
             f"Location: **{location.name}**\n"
             f"Time Left: **{get_exploration_remaining_time(exploration)}**"
         ),
@@ -136,12 +117,26 @@ def build_explore_withdraw_embed() -> discord.Embed:
 
 
 class ExploreSelect(discord.ui.Select["ExploreView"]):
-    def __init__(self) -> None:
+    def __init__(self, approaches: tuple[ExploreApproachDefinition, ...]) -> None:
         super().__init__(
-            placeholder="Choose your exploration approach",
+            placeholder="Choose your move in the district",
             min_values=1,
             max_values=1,
-            options=[discord.SelectOption(**option_data) for option_data in EXPLORE_SELECT_OPTIONS],
+            options=[
+                *[
+                    discord.SelectOption(
+                        label=approach.dropdown_label,
+                        value=approach.key,
+                        description=approach.menu_description[:100],
+                    )
+                    for approach in approaches
+                ],
+                discord.SelectOption(
+                    label="Withdraw",
+                    value="withdraw",
+                    description="Step back and wait for a better opening.",
+                ),
+            ],
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -157,13 +152,15 @@ class ExploreView(discord.ui.View):
         bot: "BleachBot",
         owner_id: int,
         player: PlayerProfile,
+        approaches: tuple[ExploreApproachDefinition, ...],
     ) -> None:
         super().__init__(timeout=180)
         self.bot = bot
         self.owner_id = owner_id
         self.player = player
+        self.approaches = approaches
         self.message: discord.Message | None = None
-        self.add_item(ExploreSelect())
+        self.add_item(ExploreSelect(approaches))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
