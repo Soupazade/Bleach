@@ -293,7 +293,6 @@ class ExploreView(discord.ui.View):
 
         await interaction.response.send_message(
             "This exploration menu belongs to another player. Use `/explore` to open your own.",
-            ephemeral=True,
         )
         return False
 
@@ -306,7 +305,6 @@ class ExploreView(discord.ui.View):
         if interaction.channel_id is None:
             await interaction.response.send_message(
                 "I couldn't determine which channel to post the exploration result in.",
-                ephemeral=True,
             )
             return
 

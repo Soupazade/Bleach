@@ -36,7 +36,6 @@ def register_explore_command(bot: "BleachBot") -> None:
         if bot.db_pool is None:
             await interaction.response.send_message(
                 "The database is not connected right now, so exploration is unavailable.",
-                ephemeral=True,
             )
             return
 
@@ -44,14 +43,12 @@ def register_explore_command(bot: "BleachBot") -> None:
         if player is None:
             await interaction.response.send_message(
                 "You don't have a profile yet. Use /start first.",
-                ephemeral=True,
             )
             return
 
         if interaction.channel_id != player.location_data.room_id:
             await interaction.response.send_message(
                 embed=build_explore_wrong_location_embed(player),
-                ephemeral=True,
             )
             return
 
@@ -60,7 +57,7 @@ def register_explore_command(bot: "BleachBot") -> None:
             embed = build_explore_resting_embed(
                 build_resting_block_message(player, rest_minutes, recovered_stamina)
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed)
             return
 
         pending_prompt = await get_pending_exploration_prompt(bot.db_pool, interaction.user.id)
@@ -71,14 +68,13 @@ def register_explore_command(bot: "BleachBot") -> None:
                 pending_prompt.total_steps,
                 pending_prompt.session.channel_id,
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed)
             return
 
         active_combat = await get_active_exploration_combat(bot.db_pool, interaction.user.id)
         if active_combat is not None:
             await interaction.response.send_message(
                 embed=build_active_combat_embed(active_combat, interaction.user),
-                ephemeral=True,
             )
             return
 
@@ -88,7 +84,6 @@ def register_explore_command(bot: "BleachBot") -> None:
             if active_exploration.end_time > now:
                 await interaction.response.send_message(
                     embed=build_explore_active_embed(player, active_exploration),
-                    ephemeral=True,
                 )
                 return
 
@@ -96,18 +91,16 @@ def register_explore_command(bot: "BleachBot") -> None:
             if resolution is None:
                 await interaction.response.send_message(
                     "Your previous exploration could not be resolved right now. Please try again.",
-                    ephemeral=True,
                 )
                 return
 
             await interaction.response.send_message(
                 embed=build_explore_resolution_posted_embed(resolution.status),
-                ephemeral=True,
             )
             return
 
         approaches = get_random_explore_options_for_location(player.location)
         view = ExploreView(bot=bot, owner_id=interaction.user.id, player=player, approaches=approaches)
         embed = build_explore_menu_embed(player)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=view)
         view.message = await interaction.original_response()
