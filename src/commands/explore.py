@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 
 from src.data.exploration import get_random_explore_options_for_location
+from src.data.training import TRAINING_YARD_LOCATION_KEY
 from src.services.location_service import channel_matches_location
 from src.services.combat_service import get_active_exploration_combat
 from src.services.exploration_service import (
@@ -24,6 +25,7 @@ from src.ui.explore_view import (
     build_explore_pending_embed,
     build_explore_resolution_posted_embed,
     build_explore_resting_embed,
+    build_explore_training_yard_embed,
     build_explore_wrong_location_embed,
 )
 from src.ui.exploration_combat_view import build_active_combat_embed
@@ -58,6 +60,12 @@ def register_explore_command(bot: "BleachBot") -> None:
         if not channel_matches_location(player.location_data, interaction.channel):
             await interaction.response.send_message(
                 embed=build_explore_wrong_location_embed(player),
+            )
+            return
+
+        if player.location == TRAINING_YARD_LOCATION_KEY:
+            await interaction.response.send_message(
+                embed=build_explore_training_yard_embed(player),
             )
             return
 

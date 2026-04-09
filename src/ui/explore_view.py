@@ -242,6 +242,29 @@ def build_explore_wrong_location_embed(player: PlayerProfile) -> discord.Embed:
     return embed
 
 
+def build_explore_training_yard_embed(player: PlayerProfile) -> discord.Embed:
+    location = player.location_data
+    embed = discord.Embed(
+        title="🧭 The Yard Is for Training",
+        description=(
+            "There is nothing to explore here. The training yard is for pushing your body, your reiatsu, and your nerve until something gives."
+        ),
+        color=get_explore_color("choice"),
+    )
+    embed.add_field(
+        name="Current State",
+        value=build_explore_info_lines(
+            f"📍 Location: {location.name}",
+            f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
+            "🏋 Try: `/train`",
+        ),
+        inline=False,
+    )
+    add_explore_divider(embed)
+    embed.set_footer(text="If you want growth here, earn it in the yard.")
+    return embed
+
+
 class ExploreSelect(discord.ui.Select["ExploreView"]):
     def __init__(self, approaches: tuple[ExploreApproachDefinition, ...]) -> None:
         super().__init__(
