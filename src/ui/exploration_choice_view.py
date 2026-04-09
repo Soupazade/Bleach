@@ -9,7 +9,9 @@ from src.services.exploration_service import (
     ExplorationDecisionPrompt,
     advance_exploration_choice,
     build_exploration_result_embed,
+    get_pending_exploration_prompt,
     get_pending_exploration_choice_by_message,
+    rebind_pending_exploration_prompt,
 )
 from src.ui.explore_embed_style import (
     add_explore_divider,
@@ -128,6 +130,18 @@ class ExplorationChoiceView(discord.ui.View):
 
         message_session = await get_pending_exploration_choice_by_message(self.bot.db_pool, interaction.message.id)
         if message_session is None:
+            rebound_prompt = await rebind_pending_exploration_prompt(
+                self.bot.db_pool,
+                user_id=interaction.user.id,
+                message_id=interaction.message.id,
+            )
+            if rebound_prompt is not None:
+                await interaction.response.edit_message(
+                    embed=build_exploration_choice_embed(rebound_prompt),
+                    view=ExplorationChoiceView(self.bot, rebound_prompt),
+                )
+                return
+
             await interaction.response.send_message(
                 "That moment in the street has already passed.",
                 ephemeral=True,
@@ -152,6 +166,20 @@ class ExplorationChoiceView(discord.ui.View):
             option_slot=option_slot,
         )
         if result.status == "missing":
+            repaired_prompt = await get_pending_exploration_prompt(self.bot.db_pool, interaction.user.id)
+            if repaired_prompt is not None:
+                rebound_prompt = await rebind_pending_exploration_prompt(
+                    self.bot.db_pool,
+                    user_id=interaction.user.id,
+                    message_id=interaction.message.id,
+                )
+                if rebound_prompt is not None:
+                    await interaction.response.edit_message(
+                        embed=build_exploration_choice_embed(rebound_prompt),
+                        view=ExplorationChoiceView(self.bot, rebound_prompt),
+                    )
+                    return
+
             await interaction.response.send_message(
                 "I could not settle that street choice right now.",
                 ephemeral=True,

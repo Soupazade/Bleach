@@ -353,6 +353,7 @@ async def create_pending_exploration_choice(
     connection: Connection,
     exploration: ActiveExploration,
     *,
+    message_id: int | None = None,
     event_key: str,
     event_flow: str,
     current_step: str,
@@ -390,7 +391,7 @@ async def create_pending_exploration_choice(
         """,
         exploration.user_id,
         exploration.channel_id,
-        None,
+        message_id,
         session_kind,
         npc_id,
         exploration.location,
@@ -726,11 +727,14 @@ def _should_trigger_special_opportunity(approach: ExploreApproachDefinition) -> 
 async def _create_special_offer(
     connection: Connection,
     base_resolution: ExplorationResolution,
+    *,
+    message_id: int | None = None,
 ) -> ExplorationDecisionPrompt:
     special_event = get_random_special_event(base_resolution.exploration.location)
     session = await create_pending_exploration_choice(
         connection,
         base_resolution.exploration,
+        message_id=message_id,
         event_key=special_event.key,
         event_flow=special_event.flow_type,
         current_step=special_event.initial_step_id,
@@ -1035,6 +1039,34 @@ async def get_pending_exploration_prompt(
         return _build_decision_prompt(session, player)
 
 
+async def rebind_pending_exploration_prompt(
+    pool: Pool | None,
+    *,
+    user_id: int,
+    message_id: int,
+) -> ExplorationDecisionPrompt | None:
+    if pool is None:
+        return None
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            session_record = await fetch_pending_choice_record(connection, user_id, for_update=True)
+            if session_record is None:
+                return None
+
+            session = PendingExplorationChoice.from_record(session_record)
+            if session.message_id != message_id:
+                session = await update_pending_choice(
+                    connection,
+                    user_id,
+                    {"message_id": message_id},
+                )
+
+            player_sync = await get_or_sync_player_record(connection, user_id)
+            player = None if player_sync is None else PlayerProfile.from_record(player_sync.record)
+            return _build_decision_prompt(session, player)
+
+
 async def start_exploration(
     pool: Pool | None,
     user_id: int,
@@ -1151,6 +1183,7 @@ async def resolve_exploration(
                 pending_choice = await create_pending_exploration_choice(
                     connection,
                     exploration,
+                    message_id=None,
                     event_key=eligible_npc_encounter.encounter.key,
                     event_flow="single_choice",
                     current_step="npc_step",
@@ -1210,7 +1243,7 @@ async def resolve_exploration(
                 )
                 if _should_trigger_special_opportunity(approach):
                     await delete_active_exploration(connection, user_id)
-                    prompt = await _create_special_offer(connection, base_resolution)
+                    prompt = await _create_special_offer(connection, base_resolution, message_id=None)
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
 
                 player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
@@ -1243,6 +1276,7 @@ async def resolve_exploration(
             pending_choice = await create_pending_exploration_choice(
                 connection,
                 exploration,
+                message_id=None,
                 event_key=event.key,
                 event_flow=event.flow_type,
                 current_step=event.initial_step_id,
@@ -1497,7 +1531,11 @@ async def advance_exploration_choice(
             )
             if session.session_kind == "decision" and outcome.event_type != "combat" and _should_trigger_special_opportunity(approach):
                 await delete_pending_choice(connection, user_id)
-                prompt = await _create_special_offer(connection, base_resolution)
+                prompt = await _create_special_offer(
+                    connection,
+                    base_resolution,
+                    message_id=session.message_id,
+                )
                 return ExplorationChoiceAdvanceResult(status="advanced", prompt=prompt)
 
             player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
