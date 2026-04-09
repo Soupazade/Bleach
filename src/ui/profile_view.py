@@ -10,6 +10,7 @@ from src.services.formulas import (
     calculate_effective_mana_max,
     calculate_effective_speed,
     calculate_effective_stamina_max,
+    get_stat_cap_for_level,
     get_xp_required_for_level,
 )
 from src.services.location_service import format_location_room_reference
@@ -166,6 +167,7 @@ def build_profile_embed(
     reputation_title = get_location_reputation_title(player, player.location)
 
     if page_key == "stats":
+        stat_cap = get_stat_cap_for_level(player.level)
         embed = _build_profile_embed_shell(
             page_key=page_key,
             discord_user=discord_user,
@@ -187,10 +189,10 @@ def build_profile_embed(
         embed.add_field(
             name="Core Stats",
             value=build_explore_info_lines(
-                f"Power: **{player.power}**",
-                f"Defense: **{player.defense}**",
-                f"Speed: **{player.speed}**",
-                f"Reiatsu: **{player.reiatsu}**",
+                f"Power: **{player.power}/{stat_cap}**",
+                f"Defense: **{player.defense}/{stat_cap}**",
+                f"Speed: **{player.speed}/{stat_cap}**",
+                f"Reiatsu: **{player.reiatsu}/{stat_cap}**",
             ),
             inline=True,
         )
@@ -205,6 +207,15 @@ def build_profile_embed(
             inline=False,
         )
         add_explore_divider(embed)
+        embed.add_field(
+            name="Current Cap",
+            value=build_explore_info_lines(
+                f"Stat Cap: **{stat_cap}** per core stat",
+                "Cap Rule: **Level x 5**",
+                "The current cap is surfaced here now so the page shows both your progress and your ceiling.",
+            ),
+            inline=False,
+        )
         embed.add_field(
             name="What Shapes Your Edge",
             value=build_explore_info_lines(
@@ -451,6 +462,8 @@ class ProfileView(discord.ui.View):
         owner_id: int,
         player: PlayerProfile,
         discord_user: discord.abc.User,
+        *,
+        initial_page: str = "overview",
     ) -> None:
         super().__init__(timeout=180)
         self.db_pool = db_pool
@@ -458,7 +471,7 @@ class ProfileView(discord.ui.View):
         self.player = player
         self.discord_user = discord_user
         self.message: discord.Message | None = None
-        self.page_key = "overview"
+        self.page_key = initial_page
         self.page_select = ProfilePageSelect()
         self.page_select.set_active(self.page_key)
         self.add_item(self.page_select)

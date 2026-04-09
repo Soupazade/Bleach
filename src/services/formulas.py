@@ -6,6 +6,7 @@ from src.data.traits import TraitDefinition
 
 RUKONGAI_EARLY_GAME_LEVEL_CAP = 10
 RUKONGAI_XP_PER_LEVEL = 15
+RUKONGAI_STAT_CAP_PER_LEVEL = 5
 
 
 def calculate_spiritual_pressure(
@@ -76,6 +77,12 @@ def get_xp_required_for_level(level: int) -> int:
     # Rukongai is tuned as the early-game zone for roughly levels 1-10, so the
     # opening curve stays intentionally quick and rewarding before later regions scale up.
     return max(1, level) * RUKONGAI_XP_PER_LEVEL
+
+
+def get_stat_cap_for_level(level: int) -> int:
+    # Early-game stat growth stays intentionally readable in Rukongai. This cap is
+    # surfaced in the UI now, and later regions/forms can swap in their own scaling cleanly.
+    return max(1, level) * RUKONGAI_STAT_CAP_PER_LEVEL
 
 
 def apply_experience_gain(

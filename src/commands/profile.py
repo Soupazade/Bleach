@@ -18,9 +18,7 @@ if TYPE_CHECKING:
 
 
 def register_profile_command(bot: "BleachBot") -> None:
-    @bot.tree.command(name="profile", description="View your Bleach RPG profile.")
-    @app_commands.guild_only()
-    async def profile(interaction: discord.Interaction) -> None:
+    async def _open_profile(interaction: discord.Interaction, *, initial_page: str) -> None:
         if bot.db_pool is None:
             await interaction.response.send_message(embed=build_profile_unavailable_embed(), ephemeral=True)
             return
@@ -35,8 +33,19 @@ def register_profile_command(bot: "BleachBot") -> None:
             owner_id=interaction.user.id,
             player=player,
             discord_user=interaction.user,
+            initial_page=initial_page,
         )
-        embed = build_profile_embed(player, interaction.user, "overview")
+        embed = build_profile_embed(player, interaction.user, initial_page)
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()
+
+    @bot.tree.command(name="profile", description="View your Bleach RPG profile.")
+    @app_commands.guild_only()
+    async def profile(interaction: discord.Interaction) -> None:
+        await _open_profile(interaction, initial_page="overview")
+
+    @bot.tree.command(name="stats", description="Jump straight to the stats page of your Soul Record.")
+    @app_commands.guild_only()
+    async def stats(interaction: discord.Interaction) -> None:
+        await _open_profile(interaction, initial_page="stats")
