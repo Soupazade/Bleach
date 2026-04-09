@@ -28,10 +28,10 @@ PLAYER_PROFILE_COLUMNS = """
     stamina_max,
     mana_current,
     mana_max,
-    strength,
+    power,
     defense,
     speed,
-    intelligence,
+    reiatsu,
     trait,
     location,
     created_at
@@ -79,10 +79,10 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                 stamina_max,
                 mana_current,
                 mana_max,
-                strength,
+                power,
                 defense,
                 speed,
-                intelligence,
+                reiatsu,
                 trait,
                 location
             )

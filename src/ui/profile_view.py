@@ -4,7 +4,7 @@ import discord
 
 from src.models.player import PlayerProfile
 from src.services.formulas import (
-    calculate_effective_damage_strength,
+    calculate_effective_damage_power,
     calculate_effective_defense,
     calculate_effective_hp_max,
     calculate_effective_mana_max,
@@ -65,10 +65,10 @@ def build_profile_embed(
         embed.add_field(
             name="Core Stats",
             value=(
-                f"STR: **{player.strength}**\n"
-                f"DEF: **{player.defense}**\n"
-                f"SPD: **{player.speed}**\n"
-                f"INT: **{player.intelligence}**"
+                f"Power: **{player.power}**\n"
+                f"Defense: **{player.defense}**\n"
+                f"Speed: **{player.speed}**\n"
+                f"Reiatsu: **{player.reiatsu}**"
             ),
             inline=True,
         )
@@ -92,7 +92,7 @@ def build_profile_embed(
         effective_hp = calculate_effective_hp_max(player.hp_max, trait)
         effective_stamina = calculate_effective_stamina_max(player.stamina_max, trait)
         effective_mana = calculate_effective_mana_max(player.mana_max, trait)
-        effective_strength = calculate_effective_damage_strength(player.strength, trait)
+        effective_power = calculate_effective_damage_power(player.power, trait)
         effective_defense = calculate_effective_defense(player.defense, trait)
         effective_speed = calculate_effective_speed(player.speed, trait)
 
@@ -103,8 +103,8 @@ def build_profile_embed(
         embed.add_field(
             name="Spiritual Pressure",
             value=(
-                "STR + DEF + SPD + INT\n"
-                f"`{player.strength} + {player.defense} + {player.speed} + {player.intelligence}"
+                "Power + Defense + Speed + Reiatsu\n"
+                f"`{player.power} + {player.defense} + {player.speed} + {player.reiatsu}"
                 f" = {player.spiritual_pressure}`"
             ),
             inline=False,
@@ -115,9 +115,9 @@ def build_profile_embed(
                 f"Effective Max HP: **{effective_hp}**\n"
                 f"Effective Max Stamina: **{effective_stamina}**\n"
                 f"Effective Max Mana: **{effective_mana}**\n"
-                f"Damage STR: **{effective_strength}**\n"
-                f"Defense Calc DEF: **{effective_defense}**\n"
-                f"Speed Calc SPD: **{effective_speed}**"
+                f"Damage Power: **{effective_power}**\n"
+                f"Defense Calc: **{effective_defense}**\n"
+                f"Speed Calc: **{effective_speed}**"
             ),
             inline=False,
         )
@@ -137,7 +137,7 @@ def build_profile_embed(
         bonus_lines = [
             f"Max HP Bonus: **{trait.bonuses.max_hp_pct:.0%}**",
             f"Max Mana Bonus: **{trait.bonuses.max_mana_pct:.0%}**",
-            f"Damage STR Bonus: **{trait.bonuses.damage_str_pct:.0%}**",
+            f"Damage Power Bonus: **{trait.bonuses.damage_power_pct:.0%}**",
             f"Speed Calc Bonus: **{trait.bonuses.dodge_spd_pct:.0%}**",
             f"Defense Calc Bonus: **{trait.bonuses.defense_pct:.0%}**",
             f"Max Stamina Bonus: **{trait.bonuses.max_stamina_pct:.0%}**",

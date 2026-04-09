@@ -8,7 +8,7 @@ import random
 class TraitBonuses:
     max_hp_pct: float = 0.0
     max_mana_pct: float = 0.0
-    damage_str_pct: float = 0.0
+    damage_power_pct: float = 0.0
     dodge_spd_pct: float = 0.0
     defense_pct: float = 0.0
     max_stamina_pct: float = 0.0
@@ -42,19 +42,19 @@ SOUL_TRAITS = {
     "fierce": TraitDefinition(
         key="fierce",
         name="Fierce",
-        effect="+5% bonus STR for damage calculations only",
-        bonuses=TraitBonuses(damage_str_pct=0.05),
+        effect="+5% bonus Power for damage calculations only",
+        bonuses=TraitBonuses(damage_power_pct=0.05),
     ),
     "fleet": TraitDefinition(
         key="fleet",
         name="Fleet",
-        effect="+5% bonus SPD for dodge/speed calculations only",
+        effect="+5% bonus Speed for dodge/speed calculations only",
         bonuses=TraitBonuses(dodge_spd_pct=0.05),
     ),
     "guarded": TraitDefinition(
         key="guarded",
         name="Guarded",
-        effect="+5% bonus DEF for defense calculations only",
+        effect="+5% bonus Defense for defense calculations only",
         bonuses=TraitBonuses(defense_pct=0.05),
     ),
     "calm_soul": TraitDefinition(

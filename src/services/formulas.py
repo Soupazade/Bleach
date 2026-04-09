@@ -4,12 +4,12 @@ from src.data.traits import TraitDefinition
 
 
 def calculate_spiritual_pressure(
-    strength: int,
+    power: int,
     defense: int,
     speed: int,
-    intelligence: int,
+    reiatsu: int,
 ) -> int:
-    return strength + defense + speed + intelligence
+    return power + defense + speed + reiatsu
 
 
 def apply_percent_bonus(base_value: int, percent_bonus: float) -> int:
@@ -28,8 +28,8 @@ def calculate_effective_mana_max(base_mana_max: int, trait: TraitDefinition) -> 
     return apply_percent_bonus(base_mana_max, trait.bonuses.max_mana_pct)
 
 
-def calculate_effective_damage_strength(base_strength: int, trait: TraitDefinition) -> int:
-    return apply_percent_bonus(base_strength, trait.bonuses.damage_str_pct)
+def calculate_effective_damage_power(base_power: int, trait: TraitDefinition) -> int:
+    return apply_percent_bonus(base_power, trait.bonuses.damage_power_pct)
 
 
 def calculate_effective_defense(base_defense: int, trait: TraitDefinition) -> int:

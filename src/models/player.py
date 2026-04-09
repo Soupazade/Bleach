@@ -22,10 +22,10 @@ class PlayerProfile:
     stamina_max: int
     mana_current: int
     mana_max: int
-    strength: int
+    power: int
     defense: int
     speed: int
-    intelligence: int
+    reiatsu: int
     spiritual_pressure: int
     trait: str
     location: str
@@ -33,10 +33,10 @@ class PlayerProfile:
 
     @classmethod
     def from_record(cls, record: Mapping[str, Any]) -> "PlayerProfile":
-        strength = int(record["strength"])
+        power = int(record["power"])
         defense = int(record["defense"])
         speed = int(record["speed"])
-        intelligence = int(record["intelligence"])
+        reiatsu = int(record["reiatsu"])
 
         return cls(
             user_id=int(record["user_id"]),
@@ -50,15 +50,15 @@ class PlayerProfile:
             stamina_max=int(record["stamina_max"]),
             mana_current=int(record["mana_current"]),
             mana_max=int(record["mana_max"]),
-            strength=strength,
+            power=power,
             defense=defense,
             speed=speed,
-            intelligence=intelligence,
+            reiatsu=reiatsu,
             spiritual_pressure=calculate_spiritual_pressure(
-                strength=strength,
+                power=power,
                 defense=defense,
                 speed=speed,
-                intelligence=intelligence,
+                reiatsu=reiatsu,
             ),
             trait=str(record["trait"]),
             location=str(record["location"]),

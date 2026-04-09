@@ -18,10 +18,10 @@ CREATE TABLE IF NOT EXISTS player_profiles (
     stamina_max INTEGER NOT NULL DEFAULT 100,
     mana_current INTEGER NOT NULL DEFAULT 50,
     mana_max INTEGER NOT NULL DEFAULT 50,
-    strength INTEGER NOT NULL DEFAULT 0,
+    power INTEGER NOT NULL DEFAULT 0,
     defense INTEGER NOT NULL DEFAULT 0,
     speed INTEGER NOT NULL DEFAULT 0,
-    intelligence INTEGER NOT NULL DEFAULT 0,
+    reiatsu INTEGER NOT NULL DEFAULT 0,
     trait TEXT NOT NULL DEFAULT 'resilient',
     location TEXT NOT NULL DEFAULT 'rukongai_streets',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -41,10 +41,10 @@ PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stamina_max INTEGER NOT NULL DEFAULT 100",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS mana_current INTEGER NOT NULL DEFAULT 50",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS mana_max INTEGER NOT NULL DEFAULT 50",
-    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS strength INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS power INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS defense INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0",
-    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS intelligence INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS reiatsu INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS trait TEXT NOT NULL DEFAULT 'resilient'",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'rukongai_streets'",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
@@ -115,6 +115,26 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
                 UPDATE player_profiles
                 SET xp = COALESCE(experience, 0)
                 WHERE xp = 0
+                """
+            )
+
+        if "strength" in column_names and "power" not in column_names:
+            await connection.execute("ALTER TABLE player_profiles ADD COLUMN power INTEGER NOT NULL DEFAULT 0")
+            await connection.execute(
+                """
+                UPDATE player_profiles
+                SET power = COALESCE(strength, 0)
+                WHERE power = 0
+                """
+            )
+
+        if "intelligence" in column_names and "reiatsu" not in column_names:
+            await connection.execute("ALTER TABLE player_profiles ADD COLUMN reiatsu INTEGER NOT NULL DEFAULT 0")
+            await connection.execute(
+                """
+                UPDATE player_profiles
+                SET reiatsu = COALESCE(intelligence, 0)
+                WHERE reiatsu = 0
                 """
             )
 
