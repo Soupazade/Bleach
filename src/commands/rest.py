@@ -8,6 +8,7 @@ from discord import app_commands
 
 from src.services.exploration_service import get_active_exploration, resolve_and_post_exploration
 from src.services.player_service import get_player_profile, get_rest_status, toggle_resting
+from src.services.training_service import get_active_training, resolve_and_post_training
 from src.services.travel_service import get_active_travel, resolve_and_post_travel
 
 if TYPE_CHECKING:
@@ -67,8 +68,19 @@ def register_rest_command(bot: "BleachBot") -> None:
             return
 
         if not player.is_resting:
+            active_training = await get_active_training(bot.db_pool, interaction.user.id)
             active_travel = await get_active_travel(bot.db_pool, interaction.user.id)
             now = datetime.now(timezone.utc)
+            if active_training is not None:
+                if active_training.end_time > now:
+                    await interaction.response.send_message(
+                        "You cannot rest while training is active.",
+                        ephemeral=True,
+                    )
+                    return
+
+                await resolve_and_post_training(bot, interaction.user.id)
+
             if active_travel is not None:
                 if active_travel.end_time > now:
                     await interaction.response.send_message(

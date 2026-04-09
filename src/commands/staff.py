@@ -15,6 +15,7 @@ from src.services.exploration_service import get_exploration_remaining_time, res
 from src.services.formulas import get_xp_required_for_level
 from src.services.location_service import format_location_room_reference
 from src.services.role_service import remove_player_roles, sync_member_location_role
+from src.services.training_service import get_training_remaining_time
 from src.services.travel_service import get_travel_remaining_time
 from src.services.staff_service import (
     delete_player_profile,
@@ -66,6 +67,15 @@ def _cancel_player_exploration_task(bot: "BleachBot", user_id: int) -> bool:
 
 def _cancel_player_travel_task(bot: "BleachBot", user_id: int) -> bool:
     task = bot.travel_tasks.pop(user_id, None)
+    if task is None:
+        return False
+
+    task.cancel()
+    return True
+
+
+def _cancel_player_training_task(bot: "BleachBot", user_id: int) -> bool:
+    task = bot.training_tasks.pop(user_id, None)
     if task is None:
         return False
 
@@ -166,6 +176,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
     active_exploration = debug_state.active_exploration
     pending_choice = debug_state.pending_choice
     active_combat = debug_state.active_combat
+    active_training = debug_state.active_training
     active_travel = debug_state.active_travel
 
     embed = discord.Embed(
@@ -259,6 +270,20 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
         exploration_value = "Exploration timer is clear. Only the active combat state remains."
     embed.add_field(name="Exploration", value=exploration_value, inline=False)
 
+    if active_training is not None:
+        embed.add_field(
+            name="Training",
+            value=(
+                f"Focus: **{active_training.stat_target.replace('_', ' ').title()}**\n"
+                f"Duration: **{active_training.duration_minutes} minute(s)**\n"
+                f"Channel: <#{active_training.channel_id}>\n"
+                f"End: **{discord.utils.format_dt(active_training.end_time, 'R')}**\n"
+                f"Remaining: **{get_training_remaining_time(active_training)}**\n"
+                f"Task Tracked: **{'Yes' if active_training.user_id in bot.training_tasks else 'No'}**"
+            ),
+            inline=False,
+        )
+
     if active_travel is not None:
         embed.add_field(
             name="Travel",
@@ -344,6 +369,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         cancelled_task = _cancel_player_exploration_task(bot, player.id)
+        cancelled_training_task = _cancel_player_training_task(bot, player.id)
         cancelled_travel_task = _cancel_player_travel_task(bot, player.id)
         deleted_profile = await delete_player_profile(bot.db_pool, player.id)
         role_summary, role_warning = await remove_player_roles(
@@ -369,6 +395,11 @@ def register_staff_commands(bot: "BleachBot") -> None:
         embed.add_field(
             name="Travel Task Cancelled",
             value="Yes" if cancelled_travel_task else "No active travel task",
+            inline=True,
+        )
+        embed.add_field(
+            name="Training Task Cancelled",
+            value="Yes" if cancelled_training_task else "No active training task",
             inline=True,
         )
         if role_summary is not None:
@@ -575,6 +606,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         cancelled_task = _cancel_player_exploration_task(bot, player.id)
+        cancelled_training_task = _cancel_player_training_task(bot, player.id)
         cancelled_travel_task = _cancel_player_travel_task(bot, player.id)
         result = await reset_player_action_timers(bot.db_pool, player.id)
         if result is None:
@@ -602,6 +634,11 @@ def register_staff_commands(bot: "BleachBot") -> None:
         embed.add_field(
             name="Combat Cleared",
             value="Yes" if result.cleared_combat else "No",
+            inline=True,
+        )
+        embed.add_field(
+            name="Training Cleared",
+            value="Yes" if result.cleared_training or cancelled_training_task else "No",
             inline=True,
         )
         embed.add_field(

@@ -14,11 +14,13 @@ from src.services.exploration_service import (
 )
 from src.services.location_service import channel_matches_location
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
+from src.services.training_service import get_active_training, resolve_and_post_training
 from src.services.travel_service import (
     get_active_travel,
     resolve_and_post_travel,
 )
 from src.ui.exploration_combat_view import build_active_combat_embed
+from src.ui.train_view import build_training_active_embed, build_training_resolution_posted_embed
 from src.ui.travel_view import (
     TravelView,
     build_travel_active_embed,
@@ -118,6 +120,30 @@ def register_travel_command(bot: "BleachBot") -> None:
                     "Your last exploration just resolved in-channel. Run `/travel` again now that the streets have finished with you.",
                     kind="explore",
                 ),
+            )
+            return
+
+        active_training = await get_active_training(bot.db_pool, interaction.user.id)
+        if active_training is not None:
+            if active_training.end_time > now:
+                await interaction.response.send_message(
+                    embed=build_training_active_embed(player, active_training),
+                )
+                return
+
+            resolution = await resolve_and_post_training(bot, interaction.user.id)
+            if resolution is None:
+                await interaction.response.send_message(
+                    embed=build_travel_blocked_embed(
+                        "🏋 Training Resolution Failed",
+                        "That session should have been over, but I could not settle it cleanly just yet.",
+                        kind="combat",
+                    ),
+                )
+                return
+
+            await interaction.response.send_message(
+                embed=build_training_resolution_posted_embed(),
             )
             return
 

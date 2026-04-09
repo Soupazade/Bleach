@@ -60,6 +60,18 @@ CREATE TABLE IF NOT EXISTS active_travels (
 );
 """
 
+CREATE_ACTIVE_TRAININGS_TABLE = """
+CREATE TABLE IF NOT EXISTS active_trainings (
+    user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    channel_id BIGINT NOT NULL,
+    stat_target TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    stamina_cost INTEGER NOT NULL
+);
+"""
+
 CREATE_ACTIVE_EXPLORATION_CHOICES_TABLE = """
 CREATE TABLE IF NOT EXISTS active_exploration_choices (
     user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
@@ -180,6 +192,11 @@ ON active_explorations (end_time);
 CREATE_ACTIVE_TRAVELS_END_TIME_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_active_travels_end_time
 ON active_travels (end_time);
+"""
+
+CREATE_ACTIVE_TRAININGS_END_TIME_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_active_trainings_end_time
+ON active_trainings (end_time);
 """
 
 CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX = """
@@ -324,6 +341,8 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX)
         await connection.execute(CREATE_ACTIVE_TRAVELS_TABLE)
         await connection.execute(CREATE_ACTIVE_TRAVELS_END_TIME_INDEX)
+        await connection.execute(CREATE_ACTIVE_TRAININGS_TABLE)
+        await connection.execute(CREATE_ACTIVE_TRAININGS_END_TIME_INDEX)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_TABLE)
         for statement in ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS:
             await connection.execute(statement)

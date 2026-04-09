@@ -46,7 +46,11 @@ from src.services.npc_service import (
     get_npc_encounter_definition,
     upsert_player_npc_progress,
 )
-from src.services.player_service import get_or_sync_player_record, update_player_record
+from src.services.player_service import (
+    get_or_sync_player_record,
+    set_stamina_resume_timestamp,
+    update_player_record,
+)
 from src.services.reputation_service import (
     apply_rep_stamina_cost,
     apply_rep_xp,
@@ -448,6 +452,20 @@ async def delete_active_exploration(connection: Connection, user_id: int) -> Non
         """,
         user_id,
     )
+
+
+async def _close_active_exploration(
+    connection: Connection,
+    exploration: ActiveExploration,
+    *,
+    resume_at: datetime | None = None,
+) -> None:
+    await set_stamina_resume_timestamp(
+        connection,
+        exploration.user_id,
+        resume_at or exploration.end_time,
+    )
+    await delete_active_exploration(connection, exploration.user_id)
 
 
 async def delete_pending_choice(connection: Connection, user_id: int) -> None:
@@ -1190,7 +1208,7 @@ async def resolve_exploration(
                     session_kind="npc_event",
                     npc_id=eligible_npc_encounter.npc.id,
                 )
-                await delete_active_exploration(connection, user_id)
+                await _close_active_exploration(connection, exploration)
                 return ExplorationPostResult(
                     status="choice_prompt",
                     prompt=_build_decision_prompt(pending_choice),
@@ -1209,7 +1227,7 @@ async def resolve_exploration(
                         exploration=exploration,
                         player=current_player,
                     )
-                    await delete_active_exploration(connection, user_id)
+                    await _close_active_exploration(connection, exploration)
                     return ExplorationPostResult(status="combat_prompt", combat=combat)
 
                 if event_type == "reward":
@@ -1242,7 +1260,7 @@ async def resolve_exploration(
                     combat_outcome=combat_outcome,
                 )
                 if _should_trigger_special_opportunity(approach):
-                    await delete_active_exploration(connection, user_id)
+                    await _close_active_exploration(connection, exploration)
                     prompt = await _create_special_offer(connection, base_resolution, message_id=None)
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
 
@@ -1253,7 +1271,7 @@ async def resolve_exploration(
                     xp_gained=adjusted_xp,
                     reputation_change=reputation_change,
                 )
-                await delete_active_exploration(connection, user_id)
+                await _close_active_exploration(connection, exploration)
                 resolution = ExplorationResolution(
                     exploration=exploration,
                     player=player,
@@ -1281,7 +1299,7 @@ async def resolve_exploration(
                 event_flow=event.flow_type,
                 current_step=event.initial_step_id,
             )
-            await delete_active_exploration(connection, user_id)
+            await _close_active_exploration(connection, exploration)
             return ExplorationPostResult(
                 status="choice_prompt",
                 prompt=_build_decision_prompt(pending_choice),

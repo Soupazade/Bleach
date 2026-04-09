@@ -126,20 +126,49 @@ async def update_player_record(
     return await connection.fetchrow(query, *values)
 
 
+async def set_stamina_resume_timestamp(
+    connection: Connection,
+    user_id: int,
+    resume_at: datetime,
+) -> None:
+    await connection.execute(
+        """
+        UPDATE player_profiles
+        SET stamina_updated_at = GREATEST(stamina_updated_at, $2)
+        WHERE user_id = $1
+          AND is_resting = FALSE
+        """,
+        user_id,
+        resume_at,
+    )
+
+
 async def get_active_stamina_activity_window(
     connection: Connection,
     user_id: int,
 ) -> TimedActivityWindow | None:
     # Timed activities should pause passive stamina recovery while they are running.
-    # Explore is live now, and training can plug into this same helper later.
+    # Explore and training pause passive recovery until they end.
     record = await connection.fetchrow(
         """
-        SELECT
-            'exploring' AS activity_type,
-            start_time,
-            end_time
-        FROM active_explorations
-        WHERE user_id = $1
+        SELECT activity_type, start_time, end_time
+        FROM (
+            SELECT
+                'exploring' AS activity_type,
+                start_time,
+                end_time
+            FROM active_explorations
+            WHERE user_id = $1
+            UNION ALL
+            SELECT
+                'training' AS activity_type,
+                start_time,
+                end_time
+            FROM active_trainings
+            WHERE user_id = $1
+        ) AS active_windows
+        ORDER BY end_time DESC
+        LIMIT 1
         """,
         user_id,
     )
