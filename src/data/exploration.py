@@ -449,5 +449,19 @@ def get_random_explore_options_for_location(
     count: int = 3,
 ) -> tuple[ExploreApproachDefinition, ...]:
     approach_pool = get_location_approach_pool(location_key)
+    if count == 3:
+        duration_buckets: dict[int, list[ExploreApproachDefinition]] = {}
+        for approach in approach_pool:
+            duration_buckets.setdefault(approach.duration_minutes, []).append(approach)
+
+        required_durations = (2, 3, 5)
+        if all(duration_buckets.get(duration) for duration in required_durations):
+            selected = [
+                random.choice(duration_buckets[duration])
+                for duration in required_durations
+            ]
+            random.shuffle(selected)
+            return tuple(selected)
+
     sample_size = min(count, len(approach_pool))
     return tuple(random.sample(approach_pool, k=sample_size))
