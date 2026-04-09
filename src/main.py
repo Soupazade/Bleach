@@ -81,6 +81,32 @@ class BleachBot(discord.Client):
 bot = BleachBot()
 
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+    if isinstance(error, app_commands.CheckFailure):
+        message = str(error) or "You do not have permission to use that command."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+        return
+
+    logging.error(
+        "Unhandled app command error.",
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    if interaction.response.is_done():
+        await interaction.followup.send(
+            "Something went wrong while running that command.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.response.send_message(
+            "Something went wrong while running that command.",
+            ephemeral=True,
+        )
+
+
 def main() -> None:
     token = os.getenv("DISCORD_TOKEN")
     if not token:

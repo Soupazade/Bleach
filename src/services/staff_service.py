@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from asyncpg import Pool
+
+from src.data.locations import get_location_definition
+from src.models.player import PlayerProfile
+from src.services.exploration_service import delete_active_exploration, fetch_active_exploration_record
+from src.services.formulas import apply_experience_gain
+from src.services.player_service import (
+    get_or_sync_player_record,
+    update_player_record,
+)
+
+
+@dataclass(slots=True)
+class CooldownResetResult:
+    player: PlayerProfile
+    cleared_exploration: bool
+    cleared_resting: bool
+
+
+async def delete_player_profile(pool: Pool | None, user_id: int) -> bool:
+    if pool is None:
+        return False
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            result = await connection.execute(
+                """
+                DELETE FROM player_profiles
+                WHERE user_id = $1
+                """,
+                user_id,
+            )
+
+    return result.endswith("1")
+
+
+async def set_player_xp(pool: Pool | None, user_id: int, xp_amount: int) -> tuple[PlayerProfile | None, int]:
+    if pool is None:
+        return None, 0
+
+    normalized_xp = max(0, xp_amount)
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None, 0
+
+            record = sync_result.record
+            level, xp, levels_gained = apply_experience_gain(
+                current_level=int(record["level"]),
+                current_xp=0,
+                xp_gain=normalized_xp,
+            )
+            updated_record = await update_player_record(
+                connection,
+                user_id,
+                {
+                    "level": level,
+                    "xp": xp,
+                },
+            )
+
+    return PlayerProfile.from_record(updated_record), levels_gained
+
+
+async def give_player_xp(pool: Pool | None, user_id: int, xp_amount: int) -> tuple[PlayerProfile | None, int]:
+    if pool is None:
+        return None, 0
+
+    normalized_xp = max(0, xp_amount)
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None, 0
+
+            record = sync_result.record
+            level, xp, levels_gained = apply_experience_gain(
+                current_level=int(record["level"]),
+                current_xp=int(record["xp"]),
+                xp_gain=normalized_xp,
+            )
+            updated_record = await update_player_record(
+                connection,
+                user_id,
+                {
+                    "level": level,
+                    "xp": xp,
+                },
+            )
+
+    return PlayerProfile.from_record(updated_record), levels_gained
+
+
+async def set_player_stamina(pool: Pool | None, user_id: int, stamina_amount: int) -> PlayerProfile | None:
+    if pool is None:
+        return None
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None
+
+            record = sync_result.record
+            clamped_stamina = max(0, min(int(record["stamina_max"]), stamina_amount))
+            updates = {
+                "stamina_current": clamped_stamina,
+                "stamina_updated_at": datetime.now(timezone.utc),
+            }
+
+            if bool(record["is_resting"]):
+                updates["rest_start_time"] = datetime.now(timezone.utc)
+                updates["rest_stamina_snapshot"] = clamped_stamina
+
+            updated_record = await update_player_record(connection, user_id, updates)
+
+    return PlayerProfile.from_record(updated_record)
+
+
+async def set_player_location(pool: Pool | None, user_id: int, location_key: str) -> PlayerProfile | None:
+    if pool is None:
+        return None
+
+    get_location_definition(location_key)
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None
+
+            updated_record = await update_player_record(
+                connection,
+                user_id,
+                {
+                    "location": location_key,
+                },
+            )
+
+    return PlayerProfile.from_record(updated_record)
+
+
+async def reset_player_action_timers(pool: Pool | None, user_id: int) -> CooldownResetResult | None:
+    if pool is None:
+        return None
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None
+
+            record = sync_result.record
+            exploration_record = await fetch_active_exploration_record(connection, user_id, for_update=True)
+            cleared_exploration = exploration_record is not None
+            if cleared_exploration:
+                await delete_active_exploration(connection, user_id)
+
+            cleared_resting = bool(record["is_resting"])
+            updated_record = record
+            if cleared_resting:
+                updated_record = await update_player_record(
+                    connection,
+                    user_id,
+                    {
+                        "is_resting": False,
+                        "rest_start_time": None,
+                        "rest_stamina_snapshot": None,
+                        "stamina_updated_at": datetime.now(timezone.utc),
+                    },
+                )
+
+    return CooldownResetResult(
+        player=PlayerProfile.from_record(updated_record),
+        cleared_exploration=cleared_exploration,
+        cleared_resting=cleared_resting,
+    )
