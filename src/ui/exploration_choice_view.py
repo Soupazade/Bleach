@@ -31,7 +31,15 @@ def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord
     footer_text = "Choose quickly. The streets do not wait."
     if prompt.prompt_kind == "special_offer":
         color = discord.Color.dark_orange()
-        footer_text = "Engaging costs an extra 10 stamina."
+        if prompt.stamina_cost > 0:
+            footer_text = (
+                f"Engaging costs an extra {prompt.stamina_cost} stamina "
+                f"({prompt.stamina_cost_modifier:+d} from {prompt.reputation_title} reputation)."
+                if prompt.stamina_cost_modifier != 0
+                else f"Engaging costs an extra {prompt.stamina_cost} stamina."
+            )
+        else:
+            footer_text = "Engaging costs extra stamina."
     elif prompt.prompt_kind == "special_event":
         color = discord.Color.red()
         footer_text = "The opportunity turned dangerous fast."

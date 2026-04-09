@@ -15,7 +15,11 @@ from src.services.exploration_service import (
     start_exploration,
 )
 from src.services.player_service import build_resting_block_message
-from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
+from src.services.reputation_service import (
+    format_reputation_stamina_text,
+    get_location_reputation_label,
+    get_location_reputation_title,
+)
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -48,11 +52,18 @@ def build_explore_menu_embed(
     return embed
 
 
-def build_explore_started_embed(player: PlayerProfile, exploration: ActiveExploration) -> discord.Embed:
+def build_explore_started_embed(
+    player: PlayerProfile,
+    exploration: ActiveExploration,
+    *,
+    stamina_cost: int,
+    base_stamina_cost: int,
+) -> discord.Embed:
     location = get_location_definition(exploration.location)
     approach = get_explore_approach(exploration.approach)
     reputation_label = get_location_reputation_label(exploration.location)
     reputation_title = get_location_reputation_title(player, exploration.location)
+    stamina_modifier = stamina_cost - base_stamina_cost
 
     embed = discord.Embed(
         title="Exploration Underway",
@@ -73,6 +84,7 @@ def build_explore_started_embed(player: PlayerProfile, exploration: ActiveExplor
     embed.add_field(
         name="Resources",
         value=(
+            f"Stamina Cost: {format_reputation_stamina_text(stamina_cost, stamina_modifier, reputation_title)}\n"
             f"Stamina After Cost: **{player.stamina_current}/{player.stamina_max}**\n"
             f"{reputation_label}: **{reputation_title}**"
         ),
@@ -194,7 +206,12 @@ class ExploreView(discord.ui.View):
             schedule_exploration_task(self.bot, result.exploration)
             self.stop()
             await interaction.response.edit_message(
-                embed=build_explore_started_embed(result.player, result.exploration),
+                embed=build_explore_started_embed(
+                    result.player,
+                    result.exploration,
+                    stamina_cost=result.stamina_cost,
+                    base_stamina_cost=result.base_stamina_cost,
+                ),
                 view=None,
             )
             return
@@ -268,13 +285,16 @@ class ExploreView(discord.ui.View):
             return
 
         if result.status == "insufficient_stamina" and result.player is not None:
+            reputation_title = get_location_reputation_title(result.player, result.player.location)
+            stamina_modifier = result.stamina_cost - result.base_stamina_cost
             self.stop()
             await interaction.response.edit_message(
                 embed=discord.Embed(
                     title="Not Enough Stamina",
                     description=(
                         "You do not have enough stamina to begin an exploration.\n"
-                        f"Current Stamina: **{result.player.stamina_current}/{result.player.stamina_max}**"
+                        f"Current Stamina: **{result.player.stamina_current}/{result.player.stamina_max}**\n"
+                        f"Required Cost: {format_reputation_stamina_text(result.stamina_cost, stamina_modifier, reputation_title)}"
                     ),
                     color=discord.Color.red(),
                 ),
