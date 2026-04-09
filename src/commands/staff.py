@@ -179,7 +179,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
 def register_staff_commands(bot: "BleachBot") -> None:
     @bot.tree.command(name="purge", description="Delete recent messages from the current channel.")
     @app_commands.guild_only()
-    @require_staff_rank("mod")
+    @require_staff_rank("admin")
     async def purge(
         interaction: discord.Interaction,
         amount: app_commands.Range[int, 1, 500],
