@@ -77,7 +77,7 @@ def register_explore_command(bot: "BleachBot") -> None:
         active_combat = await get_active_exploration_combat(bot.db_pool, interaction.user.id)
         if active_combat is not None:
             await interaction.response.send_message(
-                embed=build_active_combat_embed(active_combat),
+                embed=build_active_combat_embed(active_combat, interaction.user),
                 ephemeral=True,
             )
             return

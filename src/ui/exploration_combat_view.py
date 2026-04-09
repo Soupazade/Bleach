@@ -16,20 +16,41 @@ if TYPE_CHECKING:
     from src.models.combat import ActiveExplorationCombat
 
 
-def build_exploration_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embed:
+def _apply_combat_identity(
+    embed: discord.Embed,
+    discord_user: discord.abc.User | None,
+) -> None:
+    if discord_user is None:
+        return
+
+    embed.set_author(
+        name=discord_user.display_name,
+        icon_url=discord_user.display_avatar.url,
+    )
+    embed.set_thumbnail(url=discord_user.display_avatar.url)
+
+
+def build_exploration_combat_embed(
+    combat: "ActiveExplorationCombat",
+    discord_user: discord.abc.User | None = None,
+) -> discord.Embed:
     embed = discord.Embed(
         title=f"⚔️ {combat.encounter_title}",
         description=combat.encounter_description,
         color=get_explore_color("combat"),
     )
+    _apply_combat_identity(embed, discord_user)
     embed.add_field(
-        name="Combatants",
+        name=discord_user.display_name if discord_user is not None else "You",
         value=build_explore_info_lines(
-            "You",
             f"❤️ HP: **{combat.player_hp_current}/{combat.player_hp_max}**",
             f"🔷 Mana: **{combat.player_mana_current}/{combat.player_mana_max}**",
-            "",
-            combat.enemy_name,
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name=combat.enemy_name,
+        value=build_explore_info_lines(
             f"❤️ HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**",
         ),
         inline=True,
@@ -41,16 +62,6 @@ def build_exploration_combat_embed(combat: "ActiveExplorationCombat") -> discord
             f"🌀 Focus Bonus: **+{combat.focus_bonus}**",
             f"🗡 Last Exchange: {combat.last_round_summary}",
         ),
-        inline=True,
-    )
-    embed.add_field(
-        name="What do you do?",
-        value=build_explore_info_lines(
-            "⚔ Attack",
-            "🛡 Guard",
-            "🌀 Focus",
-            "🏃 Retreat",
-        ),
         inline=False,
     )
     add_explore_divider(embed)
@@ -60,7 +71,10 @@ def build_exploration_combat_embed(combat: "ActiveExplorationCombat") -> discord
     return embed
 
 
-def build_active_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embed:
+def build_active_combat_embed(
+    combat: "ActiveExplorationCombat",
+    discord_user: discord.abc.User | None = None,
+) -> discord.Embed:
     embed = discord.Embed(
         title="⚔️ The Fight Is Still Live",
         description=(
@@ -69,13 +83,27 @@ def build_active_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embe
         ),
         color=get_explore_color("combat"),
     )
+    _apply_combat_identity(embed, discord_user)
+    embed.add_field(
+        name=discord_user.display_name if discord_user is not None else "You",
+        value=build_explore_info_lines(
+            f"❤️ Your HP: **{combat.player_hp_current}/{combat.player_hp_max}**",
+            f"🔷 Your Mana: **{combat.player_mana_current}/{combat.player_mana_max}**",
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name=combat.enemy_name,
+        value=build_explore_info_lines(
+            f"❤️ Enemy HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**",
+        ),
+        inline=True,
+    )
     embed.add_field(
         name="Current State",
         value=build_explore_info_lines(
             f"⚔ Enemy: **{combat.enemy_name}**",
             f"⏱ Round: **{combat.round_number}**",
-            f"❤️ Your HP: **{combat.player_hp_current}/{combat.player_hp_max}**",
-            f"❤️ Enemy HP: **{combat.enemy_hp_current}/{combat.enemy_hp_max}**",
         ),
         inline=False,
     )
@@ -163,7 +191,7 @@ class ExplorationCombatView(discord.ui.View):
 
         if result.status == "updated" and result.combat is not None:
             await interaction.response.edit_message(
-                embed=build_exploration_combat_embed(result.combat),
+                embed=build_exploration_combat_embed(result.combat, interaction.user),
                 view=ExplorationCombatView(self.bot),
             )
             return

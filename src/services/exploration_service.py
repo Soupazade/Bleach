@@ -1845,8 +1845,19 @@ async def post_exploration_combat_prompt(
         await _clear_active_combat()
         return
 
+    discord_user: discord.abc.User | None = None
+    if isinstance(channel, (discord.TextChannel, discord.Thread)):
+        discord_user = channel.guild.get_member(combat.user_id)
+    if discord_user is None:
+        discord_user = bot.get_user(combat.user_id)
+    if discord_user is None:
+        try:
+            discord_user = await bot.fetch_user(combat.user_id)
+        except discord.HTTPException:
+            discord_user = None
+
     view = ExplorationCombatView(bot)
-    embed = build_exploration_combat_embed(combat)
+    embed = build_exploration_combat_embed(combat, discord_user)
     try:
         message = await channel.send(
             content=f"<@{combat.user_id}>",

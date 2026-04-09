@@ -195,7 +195,7 @@ class ExplorationChoiceView(discord.ui.View):
 
         if result.status == "combat" and result.combat is not None:
             await interaction.response.edit_message(
-                embed=build_exploration_combat_embed(result.combat),
+                embed=build_exploration_combat_embed(result.combat, interaction.user),
                 view=ExplorationCombatView(self.bot),
             )
             return
