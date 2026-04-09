@@ -37,6 +37,7 @@ class BleachBot(discord.Client):
         self.guild_id = self._parse_guild_id()
         self.tree = app_commands.CommandTree(self)
         self.exploration_tasks: dict[int, asyncio.Task] = {}
+        self.recent_combat_resolutions: dict[int, object] = {}
         register_commands(self)
 
     @staticmethod

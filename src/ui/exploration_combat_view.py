@@ -89,6 +89,28 @@ def build_active_combat_embed(combat: "ActiveExplorationCombat") -> discord.Embe
     return embed
 
 
+def build_settled_combat_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="⚔️ The Fight Is Already Over",
+        description=(
+            "That clash has already finished. The old combat panel lingered longer than it should have, "
+            "so I closed it instead of leaving a live fight that is not live."
+        ),
+        color=get_explore_color("combat"),
+    )
+    embed.add_field(
+        name="Current State",
+        value=build_explore_info_lines(
+            "⚔ Combat: Settled",
+            "📘 Check the updated result message above if it landed cleanly.",
+            "📘 If not, `/profile` will still reflect the outcome.",
+        ),
+        inline=False,
+    )
+    add_explore_divider(embed)
+    return embed
+
+
 class ExplorationCombatView(discord.ui.View):
     def __init__(self, bot: "BleachBot") -> None:
         super().__init__(timeout=None)
@@ -101,9 +123,17 @@ class ExplorationCombatView(discord.ui.View):
 
         combat = await get_active_exploration_combat_by_message(self.bot.db_pool, interaction.message.id)
         if combat is None:
-            await interaction.response.send_message(
-                "That fight has already been settled.",
-                ephemeral=True,
+            cached_resolution = self.bot.recent_combat_resolutions.get(interaction.message.id)
+            if cached_resolution is not None:
+                await interaction.response.edit_message(
+                    embed=build_exploration_result_embed(cached_resolution),
+                    view=None,
+                )
+                return
+
+            await interaction.response.edit_message(
+                embed=build_settled_combat_embed(),
+                view=None,
             )
             try:
                 await interaction.message.edit(view=None)
@@ -139,6 +169,7 @@ class ExplorationCombatView(discord.ui.View):
             return
 
         if result.status == "resolved" and result.resolution is not None:
+            self.bot.recent_combat_resolutions[interaction.message.id] = result.resolution
             await interaction.response.edit_message(
                 embed=build_exploration_result_embed(result.resolution),
                 view=None,
