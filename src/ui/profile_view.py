@@ -10,7 +10,9 @@ from src.services.formulas import (
     calculate_effective_mana_max,
     calculate_effective_speed,
     calculate_effective_stamina_max,
-    get_stat_cap_for_level,
+    calculate_total_core_stats,
+    get_remaining_stat_capacity,
+    get_total_stat_cap_for_level,
     get_xp_required_for_level,
 )
 from src.services.location_service import format_location_room_reference
@@ -167,13 +169,26 @@ def build_profile_embed(
     reputation_title = get_location_reputation_title(player, player.location)
 
     if page_key == "stats":
-        stat_cap = get_stat_cap_for_level(player.level)
+        total_stat_cap = get_total_stat_cap_for_level(player.level)
+        total_stats_spent = calculate_total_core_stats(
+            player.power,
+            player.defense,
+            player.speed,
+            player.reiatsu,
+        )
+        remaining_capacity = get_remaining_stat_capacity(
+            level=player.level,
+            power=player.power,
+            defense=player.defense,
+            speed=player.speed,
+            reiatsu=player.reiatsu,
+        )
         embed = _build_profile_embed_shell(
             page_key=page_key,
             discord_user=discord_user,
             description=(
-                "Nothing in Rukongai comes easy. Every scrap of power on this page is something "
-                "your soul has had to carry for itself."
+                "Nothing in Rukongai comes easy. Every point you place into your build is part of one shared pool, "
+                "so what you sharpen says as much about you as what you leave behind."
             ),
         )
         embed.add_field(
@@ -189,10 +204,10 @@ def build_profile_embed(
         embed.add_field(
             name="Core Stats",
             value=build_explore_info_lines(
-                f"Power: **{player.power}/{stat_cap}**",
-                f"Defense: **{player.defense}/{stat_cap}**",
-                f"Speed: **{player.speed}/{stat_cap}**",
-                f"Reiatsu: **{player.reiatsu}/{stat_cap}**",
+                f"Power: **{player.power}**",
+                f"Defense: **{player.defense}**",
+                f"Speed: **{player.speed}**",
+                f"Reiatsu: **{player.reiatsu}**",
             ),
             inline=True,
         )
@@ -210,9 +225,9 @@ def build_profile_embed(
         embed.add_field(
             name="Current Cap",
             value=build_explore_info_lines(
-                f"Stat Cap: **{stat_cap}** per core stat",
-                "Cap Rule: **Level x 5**",
-                "The current cap is surfaced here now so the page shows both your progress and your ceiling.",
+                f"Total Stat Pool: **{total_stats_spent}/{total_stat_cap}**",
+                f"Remaining Points: **{remaining_capacity}**",
+                "Cap Rule: **Level x 10 total across all four stats**",
             ),
             inline=False,
         )

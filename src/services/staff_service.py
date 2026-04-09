@@ -35,7 +35,7 @@ from src.services.training_service import (
     fetch_active_training_record,
     get_active_training,
 )
-from src.services.formulas import apply_experience_gain
+from src.services.formulas import apply_experience_gain, get_total_stat_cap_for_level
 from src.services.player_service import (
     get_player_profile,
     get_rest_status,
@@ -238,11 +238,21 @@ async def set_player_stat(
             if sync_result is None:
                 return None
 
+            player = PlayerProfile.from_record(sync_result.record)
+            total_cap = get_total_stat_cap_for_level(player.level)
+            other_stats_total = (
+                player.power
+                + player.defense
+                + player.speed
+                + player.reiatsu
+                - getattr(player, stat_name)
+            )
+            max_allowed_for_stat = max(0, total_cap - other_stats_total)
             updated_record = await update_player_record(
                 connection,
                 user_id,
                 {
-                    stat_name: max(0, stat_amount),
+                    stat_name: max(0, min(stat_amount, max_allowed_for_stat)),
                 },
             )
 

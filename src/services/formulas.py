@@ -6,7 +6,7 @@ from src.data.traits import TraitDefinition
 
 RUKONGAI_EARLY_GAME_LEVEL_CAP = 10
 RUKONGAI_XP_PER_LEVEL = 15
-RUKONGAI_STAT_CAP_PER_LEVEL = 5
+RUKONGAI_TOTAL_STAT_CAP_PER_LEVEL = 10
 
 
 def calculate_spiritual_pressure(
@@ -79,10 +79,32 @@ def get_xp_required_for_level(level: int) -> int:
     return max(1, level) * RUKONGAI_XP_PER_LEVEL
 
 
-def get_stat_cap_for_level(level: int) -> int:
-    # Early-game stat growth stays intentionally readable in Rukongai. This cap is
-    # surfaced in the UI now, and later regions/forms can swap in their own scaling cleanly.
-    return max(1, level) * RUKONGAI_STAT_CAP_PER_LEVEL
+def get_total_stat_cap_for_level(level: int) -> int:
+    # Rukongai uses a shared total stat budget so players choose what matters most
+    # instead of capping every core stat evenly. Later regions can swap this out cleanly.
+    return max(1, level) * RUKONGAI_TOTAL_STAT_CAP_PER_LEVEL
+
+
+def calculate_total_core_stats(
+    power: int,
+    defense: int,
+    speed: int,
+    reiatsu: int,
+) -> int:
+    return power + defense + speed + reiatsu
+
+
+def get_remaining_stat_capacity(
+    *,
+    level: int,
+    power: int,
+    defense: int,
+    speed: int,
+    reiatsu: int,
+) -> int:
+    total_cap = get_total_stat_cap_for_level(level)
+    spent = calculate_total_core_stats(power, defense, speed, reiatsu)
+    return max(0, total_cap - spent)
 
 
 def apply_experience_gain(

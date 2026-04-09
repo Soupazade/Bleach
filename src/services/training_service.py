@@ -29,7 +29,11 @@ from src.services.exploration_service import (
     fetch_active_exploration_record,
     fetch_pending_choice_record,
 )
-from src.services.formulas import calculate_minutes_elapsed, format_remaining_duration
+from src.services.formulas import (
+    calculate_minutes_elapsed,
+    format_remaining_duration,
+    get_remaining_stat_capacity,
+)
 from src.services.player_service import (
     fetch_player_record,
     get_or_sync_player_record,
@@ -199,6 +203,33 @@ def _apply_training_stamina_cost(
     rep_value = get_location_reputation_value(player, player.location)
     adjusted_cost = apply_rep_stamina_cost(base_cost, rep_value)
     return adjusted_cost, adjusted_cost - base_cost
+
+
+def _apply_shared_stat_cap(
+    player: PlayerProfile,
+    reward: dict[str, int],
+) -> dict[str, int]:
+    remaining_capacity = get_remaining_stat_capacity(
+        level=player.level,
+        power=player.power,
+        defense=player.defense,
+        speed=player.speed,
+        reiatsu=player.reiatsu,
+    )
+    if remaining_capacity <= 0 or not reward:
+        return {}
+
+    capped_reward: dict[str, int] = {}
+    for stat_name in ("power", "defense", "speed", "reiatsu"):
+        gain = reward.get(stat_name, 0)
+        if gain <= 0 or remaining_capacity <= 0:
+            continue
+
+        applied_gain = min(gain, remaining_capacity)
+        capped_reward[stat_name] = applied_gain
+        remaining_capacity -= applied_gain
+
+    return capped_reward
 
 
 def get_training_progress_snapshot(
@@ -379,6 +410,8 @@ async def resolve_training(
                     training.duration_minutes,
                 )
                 resume_at = now if force and training.end_time > now else training.end_time
+
+            reward = _apply_shared_stat_cap(current_player, reward)
 
             stat_updates = {
                 stat_name: getattr(current_player, stat_name) + gain
