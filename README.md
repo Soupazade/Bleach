@@ -44,10 +44,11 @@ python main.py
 
 ## Commands
 
-- `/ping` replies with bot latency information
+- `/start` creates a Soul profile and assigns the starting roles
+- `/profile` displays a multi-page character sheet with a dropdown menu
 
 ## Notes
 
 - The bot auto-syncs slash commands to the guild in `DISCORD_GUILD_ID` on startup.
-- On startup, it also ensures a `player_profiles` table exists in PostgreSQL.
+- On startup, it also ensures a `player_profiles` table exists in PostgreSQL and upgrades the old starter schema when needed.
 - `DISCORD_CLIENT_ID` is kept for future invite/deployment use, even though this starter does not need it to run.

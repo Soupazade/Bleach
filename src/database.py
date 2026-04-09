@@ -7,12 +7,53 @@ import asyncpg
 CREATE_PLAYER_PROFILES_TABLE = """
 CREATE TABLE IF NOT EXISTS player_profiles (
     id BIGSERIAL PRIMARY KEY,
-    discord_user_id TEXT UNIQUE NOT NULL,
+    user_id BIGINT UNIQUE NOT NULL,
+    race TEXT NOT NULL DEFAULT 'Soul',
+    rank TEXT NOT NULL DEFAULT 'Wandering Soul',
     level INTEGER NOT NULL DEFAULT 1,
-    experience INTEGER NOT NULL DEFAULT 0,
+    xp INTEGER NOT NULL DEFAULT 0,
+    hp_current INTEGER NOT NULL DEFAULT 100,
+    hp_max INTEGER NOT NULL DEFAULT 100,
+    stamina_current INTEGER NOT NULL DEFAULT 100,
+    stamina_max INTEGER NOT NULL DEFAULT 100,
+    mana_current INTEGER NOT NULL DEFAULT 50,
+    mana_max INTEGER NOT NULL DEFAULT 50,
+    strength INTEGER NOT NULL DEFAULT 0,
+    defense INTEGER NOT NULL DEFAULT 0,
+    speed INTEGER NOT NULL DEFAULT 0,
+    intelligence INTEGER NOT NULL DEFAULT 0,
+    trait TEXT NOT NULL DEFAULT 'resilient',
+    location TEXT NOT NULL DEFAULT 'rukongai_streets',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+"""
+
+PLAYER_PROFILE_COLUMN_DEFAULTS = (
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS user_id BIGINT",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS race TEXT NOT NULL DEFAULT 'Soul'",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rank TEXT NOT NULL DEFAULT 'Wandering Soul'",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS xp INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS hp_current INTEGER NOT NULL DEFAULT 100",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS hp_max INTEGER NOT NULL DEFAULT 100",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stamina_current INTEGER NOT NULL DEFAULT 100",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stamina_max INTEGER NOT NULL DEFAULT 100",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS mana_current INTEGER NOT NULL DEFAULT 50",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS mana_max INTEGER NOT NULL DEFAULT 50",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS strength INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS defense INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS intelligence INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS trait TEXT NOT NULL DEFAULT 'resilient'",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'rukongai_streets'",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+)
+
+CREATE_PLAYER_PROFILE_USER_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_user_id
+ON player_profiles (user_id);
 """
 
 
@@ -23,7 +64,12 @@ async def create_pool() -> asyncpg.Pool | None:
         return None
 
     try:
-        pool = await asyncpg.create_pool(database_url)
+        pool = await asyncpg.create_pool(
+            database_url,
+            min_size=1,
+            max_size=5,
+            command_timeout=30,
+        )
     except Exception as error:
         logging.exception("Failed to connect to PostgreSQL. Database features are disabled.")
         logging.warning("Startup will continue without a database connection: %s", error)
@@ -39,3 +85,40 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
 
     async with pool.acquire() as connection:
         await connection.execute(CREATE_PLAYER_PROFILES_TABLE)
+        existing_columns = await connection.fetch(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'player_profiles'
+            """
+        )
+        column_names = {row["column_name"] for row in existing_columns}
+
+        if "discord_user_id" in column_names and "user_id" not in column_names:
+            await connection.execute("ALTER TABLE player_profiles ADD COLUMN user_id BIGINT")
+            await connection.execute(
+                """
+                UPDATE player_profiles
+                SET user_id = NULLIF(discord_user_id, '')::BIGINT
+                WHERE user_id IS NULL
+                  AND NULLIF(discord_user_id, '') IS NOT NULL
+                """
+            )
+
+        if "experience" in column_names and "xp" not in column_names:
+            await connection.execute(
+                "ALTER TABLE player_profiles ADD COLUMN xp INTEGER NOT NULL DEFAULT 0"
+            )
+            await connection.execute(
+                """
+                UPDATE player_profiles
+                SET xp = COALESCE(experience, 0)
+                WHERE xp = 0
+                """
+            )
+
+        for statement in PLAYER_PROFILE_COLUMN_DEFAULTS:
+            await connection.execute(statement)
+
+        await connection.execute(CREATE_PLAYER_PROFILE_USER_ID_INDEX)

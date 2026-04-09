@@ -5,6 +5,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
+from src.commands import register_commands
 from src.database import create_pool, ensure_schema
 
 
@@ -31,6 +32,7 @@ class BleachBot(discord.Client):
         self.db_pool = None
         self.guild_id = self._parse_guild_id()
         self.tree = app_commands.CommandTree(self)
+        register_commands(self)
 
     @staticmethod
     def _parse_guild_id() -> int | None:
@@ -69,31 +71,6 @@ class BleachBot(discord.Client):
 
 
 bot = BleachBot()
-
-
-@bot.tree.command(name="ping", description="Check whether the bot is online.")
-async def ping(interaction: discord.Interaction) -> None:
-    latency_ms = round(bot.latency * 1000)
-    await interaction.response.send_message(f"Pong! API latency: {latency_ms}ms.")
-
-
-@bot.tree.command(name="dbcheck", description="Verify the bot can talk to PostgreSQL.")
-async def dbcheck(interaction: discord.Interaction) -> None:
-    if bot.db_pool is None:
-        await interaction.response.send_message(
-            "Database is not connected right now.",
-            ephemeral=True,
-        )
-        return
-
-    async with bot.db_pool.acquire() as connection:
-        current_time = await connection.fetchval("select now()")
-        profile_count = await connection.fetchval("select count(*) from player_profiles")
-
-    await interaction.response.send_message(
-        f"Database is connected. player_profiles rows: {profile_count}. Server time: {current_time}.",
-        ephemeral=True,
-    )
 
 
 def main() -> None:
