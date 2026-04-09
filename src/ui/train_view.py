@@ -483,6 +483,8 @@ class TrainingSetupView(discord.ui.View):
             )
             return
 
+        await interaction.response.defer()
+
         result = await start_training(
             self.bot.db_pool,
             interaction.user.id,
@@ -494,7 +496,7 @@ class TrainingSetupView(discord.ui.View):
         if result.status == "started" and result.player is not None and result.training is not None:
             self.stop()
             schedule_training_task(self.bot, result.training)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_started_embed(
                     result.player,
                     result.training,
@@ -506,21 +508,23 @@ class TrainingSetupView(discord.ui.View):
 
         if result.status == "active_training" and result.player is not None and result.training is not None:
             self.stop()
-            await interaction.response.edit_message(
-                embed=build_training_active_embed(result.player, result.training),
-                view=TrainingInterruptView(
-                    bot=self.bot,
-                    owner_id=self.owner_id,
-                    player=result.player,
-                    training=result.training,
-                ),
+            interrupt_view = TrainingInterruptView(
+                bot=self.bot,
+                owner_id=self.owner_id,
+                player=result.player,
+                training=result.training,
             )
+            await interaction.message.edit(
+                embed=build_training_active_embed(result.player, result.training),
+                view=interrupt_view,
+            )
+            interrupt_view.message = interaction.message
             return
 
         if result.status == "finished":
             self.stop()
             resolution = await resolve_and_post_training(self.bot, interaction.user.id)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_resolution_posted_embed() if resolution is not None else build_training_blocked_embed(
                     "🏋 Training Resolution Failed",
                     "The session should have been over, but I could not settle it cleanly just yet.",
@@ -533,7 +537,7 @@ class TrainingSetupView(discord.ui.View):
         if result.status == "resting" and result.player is not None:
             rest_minutes, recovered_stamina = get_rest_status(result.player)
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_resting_embed(
                     build_resting_block_message(result.player, rest_minutes, recovered_stamina)
                 ),
@@ -547,7 +551,7 @@ class TrainingSetupView(discord.ui.View):
                 self.selected_duration,
             )
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_insufficient_stamina_embed(
                     result.player.stamina_current,
                     result.player.stamina_max,
@@ -560,7 +564,7 @@ class TrainingSetupView(discord.ui.View):
         if result.status == "active_exploration" and result.player is not None and result.exploration is not None:
             self.stop()
             if result.exploration.end_time > datetime.now(timezone.utc):
-                await interaction.response.edit_message(
+                await interaction.message.edit(
                     embed=build_training_blocked_embed(
                         "🏋 You Are Already Out There",
                         "Finish the exploration you already committed to before you try to train.",
@@ -573,7 +577,7 @@ class TrainingSetupView(discord.ui.View):
             from src.services.exploration_service import resolve_and_post_exploration
 
             resolution = await resolve_and_post_exploration(self.bot, interaction.user.id)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_explore_resolution_posted_embed(resolution.status) if resolution is not None else build_training_blocked_embed(
                     "🏋 Previous Exploration Is Still Tangled",
                     "That run should have been over, but I could not settle it cleanly just yet.",
@@ -586,7 +590,7 @@ class TrainingSetupView(discord.ui.View):
         if result.status == "active_travel" and result.player is not None and result.travel is not None:
             self.stop()
             if result.travel.end_time > datetime.now(timezone.utc):
-                await interaction.response.edit_message(
+                await interaction.message.edit(
                     embed=build_travel_active_embed(result.player, result.travel),
                     view=None,
                 )
@@ -595,7 +599,7 @@ class TrainingSetupView(discord.ui.View):
             from src.services.travel_service import resolve_and_post_travel
 
             resolution = await resolve_and_post_travel(self.bot, interaction.user.id)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_travel_resolution_posted_embed() if resolution is not None else build_training_blocked_embed(
                     "🏋 Travel Resolution Failed",
                     "The trip ended, but I could not settle the arrival cleanly just yet.",
@@ -607,7 +611,7 @@ class TrainingSetupView(discord.ui.View):
 
         if result.status == "pending_choice":
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_blocked_embed(
                     "🏋 A Street Decision Is Still Waiting",
                     "Settle the choice still hanging over your last run before you try to train.",
@@ -620,7 +624,7 @@ class TrainingSetupView(discord.ui.View):
         if result.status == "active_combat" and result.player is not None:
             self.stop()
             active_combat = await get_active_exploration_combat(self.bot.db_pool, interaction.user.id)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_active_combat_embed(active_combat, interaction.user) if active_combat is not None else build_training_blocked_embed(
                     "🏋 A Fight Is Already On You",
                     "Finish the live fight before you try to focus on training.",
@@ -632,7 +636,7 @@ class TrainingSetupView(discord.ui.View):
 
         if result.status == "invalid_selection":
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_blocked_embed(
                     "🏋 Invalid Training Plan",
                     "That focus and duration do not fit together. All Stats is only available for a 60 minute session.",
@@ -644,14 +648,14 @@ class TrainingSetupView(discord.ui.View):
 
         if result.status == "wrong_location" and result.player is not None:
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_location_required_embed(result.player),
                 view=None,
             )
             return
 
         self.stop()
-        await interaction.response.edit_message(
+        await interaction.message.edit(
             embed=build_training_missing_profile_embed(),
             view=None,
         )
@@ -716,84 +720,77 @@ class TrainingInterruptView(discord.ui.View):
         return False
 
     async def continue_training(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
         current_training = await get_active_training(self.bot.db_pool, interaction.user.id)
         if current_training is None:
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_resolution_posted_embed(),
                 view=None,
             )
             return
-
         if current_training.end_time <= datetime.now(timezone.utc):
             tracked_task = self.bot.training_tasks.pop(interaction.user.id, None)
             if tracked_task is not None:
                 tracked_task.cancel()
-
             self.stop()
             resolution = await resolve_and_post_training(self.bot, interaction.user.id)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_resolution_posted_embed() if resolution is not None else build_training_blocked_embed(
-                    "🏋 Training Resolution Failed",
+                    "Training Resolution Failed",
                     "The session should have been over, but I could not settle it cleanly just yet.",
                     kind="combat",
                 ),
                 view=None,
             )
             return
-
         self.stop()
-        await interaction.response.edit_message(
+        await interaction.message.edit(
             embed=build_training_active_embed(self.player, current_training),
             view=None,
         )
-
     async def stop_early(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
         current_training = await get_active_training(self.bot.db_pool, interaction.user.id)
         if current_training is None:
             self.stop()
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_resolution_posted_embed(),
                 view=None,
             )
             return
-
         if current_training.end_time <= datetime.now(timezone.utc):
             tracked_task = self.bot.training_tasks.pop(interaction.user.id, None)
             if tracked_task is not None:
                 tracked_task.cancel()
-
             self.stop()
             resolution = await resolve_and_post_training(self.bot, interaction.user.id)
-            await interaction.response.edit_message(
+            await interaction.message.edit(
                 embed=build_training_resolution_posted_embed() if resolution is not None else build_training_blocked_embed(
-                    "🏋 Training Resolution Failed",
+                    "Training Resolution Failed",
                     "The session should have been over, but I could not settle it cleanly just yet.",
                     kind="combat",
                 ),
                 view=None,
             )
             return
-
         tracked_task = self.bot.training_tasks.pop(interaction.user.id, None)
         if tracked_task is not None:
             tracked_task.cancel()
-
         resolution = await resolve_training(
             self.bot.db_pool,
             interaction.user.id,
             early_stop=True,
         )
         self.stop()
-        await interaction.response.edit_message(
+        await interaction.message.edit(
             embed=build_training_complete_embed(resolution) if resolution is not None else build_training_blocked_embed(
-                "🏋 Early Stop Failed",
+                "Early Stop Failed",
                 "I could not settle that training session cleanly just yet.",
                 kind="combat",
             ),
             view=None,
         )
-
     async def on_timeout(self) -> None:
         for child in self.children:
             child.disabled = True
@@ -803,3 +800,4 @@ class TrainingInterruptView(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass
+
