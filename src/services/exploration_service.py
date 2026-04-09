@@ -33,6 +33,7 @@ from src.services.npc_service import (
     upsert_player_npc_progress,
 )
 from src.services.player_service import get_or_sync_player_record, update_player_record
+from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -875,6 +876,7 @@ async def resolve_exploration(
                     prompt = await _create_special_offer(connection, base_resolution)
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
 
+                # TODO: Apply region reputation changes here once instant outcomes carry reputation deltas.
                 player, levels_gained = await _apply_xp_gain(connection, user_id, xp_gained)
                 await delete_active_exploration(connection, user_id)
                 resolution = ExplorationResolution(
@@ -937,6 +939,7 @@ async def advance_exploration_choice(
 
                 selected_option = encounter.options[option_slot - 1]
                 outcome = selected_option.outcome
+                # TODO: Apply region reputation changes here once NPC outcomes carry reputation metadata.
                 player, levels_gained = await _apply_xp_gain(connection, user_id, outcome.xp_reward)
                 await upsert_player_npc_progress(
                     connection,
@@ -969,6 +972,7 @@ async def advance_exploration_choice(
                     if session.base_xp is None:
                         return ExplorationChoiceAdvanceResult(status="missing")
 
+                    # TODO: Apply region reputation changes here when stored base outcomes include reputation deltas.
                     player, levels_gained = await _apply_xp_gain(connection, user_id, session.base_xp)
                     resolution = _build_resolution_from_pending_base(session, player, levels_gained)
                     await delete_pending_choice(connection, user_id)
@@ -1063,6 +1067,7 @@ async def advance_exploration_choice(
                 prompt = await _create_special_offer(connection, base_resolution)
                 return ExplorationChoiceAdvanceResult(status="advanced", prompt=prompt)
 
+            # TODO: Apply region reputation changes here once branching outcomes carry reputation deltas.
             player, levels_gained = await _apply_xp_gain(connection, user_id, xp_gained)
             await delete_pending_choice(connection, user_id)
             resolution = ExplorationResolution(
@@ -1085,6 +1090,11 @@ async def advance_exploration_choice(
 def build_exploration_result_embed(resolution: ExplorationResolution) -> discord.Embed:
     location = get_location_definition(resolution.exploration.location)
     approach = get_explore_approach(resolution.exploration.approach)
+    reputation_label = get_location_reputation_label(resolution.exploration.location)
+    reputation_title = get_location_reputation_title(
+        resolution.player,
+        resolution.exploration.location,
+    )
 
     color_by_event = {
         "reward": discord.Color.gold(),
@@ -1103,7 +1113,8 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         value=(
             f"Location: **{location.name}**\n"
             f"Approach: **{approach.label}**\n"
-            f"Duration: **{approach.duration_minutes} minute(s)**"
+            f"Duration: **{approach.duration_minutes} minute(s)**\n"
+            f"{reputation_label}: **{reputation_title}**"
         ),
         inline=True,
     )

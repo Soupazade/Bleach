@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from src.data.locations import LocationDefinition, get_location_definition
 from src.data.traits import TraitDefinition, get_trait_definition
 from src.services.formulas import calculate_spiritual_pressure
+from src.services.reputation_service import clamp_reputation, get_reputation_title
 
 
 @dataclass(slots=True)
@@ -29,6 +30,7 @@ class PlayerProfile:
     spiritual_pressure: int
     trait: str
     location: str
+    rukongai_rep: int
     is_resting: bool
     rest_start_time: datetime | None
     rest_stamina_snapshot: int | None
@@ -66,6 +68,7 @@ class PlayerProfile:
             ),
             trait=str(record["trait"]),
             location=str(record["location"]),
+            rukongai_rep=clamp_reputation(int(record["rukongai_rep"])),
             is_resting=bool(record["is_resting"]),
             rest_start_time=record["rest_start_time"],
             rest_stamina_snapshot=record["rest_stamina_snapshot"],
@@ -80,3 +83,7 @@ class PlayerProfile:
     @property
     def location_data(self) -> LocationDefinition:
         return get_location_definition(self.location)
+
+    @property
+    def rukongai_reputation_title(self) -> str:
+        return get_reputation_title(self.rukongai_rep)

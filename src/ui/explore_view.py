@@ -15,6 +15,7 @@ from src.services.exploration_service import (
     start_exploration,
 )
 from src.services.player_service import build_resting_block_message
+from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -25,6 +26,8 @@ def build_explore_menu_embed(
 ) -> discord.Embed:
     location = player.location_data
     location_exploration = get_location_exploration_definition(player.location)
+    reputation_label = get_location_reputation_label(player.location)
+    reputation_title = get_location_reputation_title(player, player.location)
 
     embed = discord.Embed(
         title=f"Explore | {location_exploration.menu_title}",
@@ -36,7 +39,8 @@ def build_explore_menu_embed(
         value=(
             f"Location: **{location.name}**\n"
             f"Stamina: **{player.stamina_current}/{player.stamina_max}**\n"
-            f"Level: **{player.level}**"
+            f"Level: **{player.level}**\n"
+            f"{reputation_label}: **{reputation_title}**"
         ),
         inline=False,
     )
@@ -47,6 +51,8 @@ def build_explore_menu_embed(
 def build_explore_started_embed(player: PlayerProfile, exploration: ActiveExploration) -> discord.Embed:
     location = get_location_definition(exploration.location)
     approach = get_explore_approach(exploration.approach)
+    reputation_label = get_location_reputation_label(exploration.location)
+    reputation_title = get_location_reputation_title(player, exploration.location)
 
     embed = discord.Embed(
         title="Exploration Underway",
@@ -66,16 +72,21 @@ def build_explore_started_embed(player: PlayerProfile, exploration: ActiveExplor
     )
     embed.add_field(
         name="Resources",
-        value=f"Stamina After Cost: **{player.stamina_current}/{player.stamina_max}**",
+        value=(
+            f"Stamina After Cost: **{player.stamina_current}/{player.stamina_max}**\n"
+            f"{reputation_label}: **{reputation_title}**"
+        ),
         inline=True,
     )
     embed.set_footer(text="Your result will be posted automatically in this channel.")
     return embed
 
 
-def build_explore_active_embed(exploration: ActiveExploration) -> discord.Embed:
+def build_explore_active_embed(player: PlayerProfile, exploration: ActiveExploration) -> discord.Embed:
     location = get_location_definition(exploration.location)
     approach = get_explore_approach(exploration.approach)
+    reputation_label = get_location_reputation_label(exploration.location)
+    reputation_title = get_location_reputation_title(player, exploration.location)
 
     embed = discord.Embed(
         title="Exploration Already Active",
@@ -87,7 +98,8 @@ def build_explore_active_embed(exploration: ActiveExploration) -> discord.Embed:
         value=(
             f"Approach: **{approach.label}**\n"
             f"Location: **{location.name}**\n"
-            f"Time Left: **{get_exploration_remaining_time(exploration)}**"
+            f"Time Left: **{get_exploration_remaining_time(exploration)}**\n"
+            f"{reputation_label}: **{reputation_title}**"
         ),
         inline=False,
     )
@@ -187,9 +199,9 @@ class ExploreView(discord.ui.View):
             )
             return
 
-        if result.status == "active" and result.exploration is not None:
+        if result.status == "active" and result.player is not None and result.exploration is not None:
             await interaction.response.edit_message(
-                embed=build_explore_active_embed(result.exploration),
+                embed=build_explore_active_embed(result.player, result.exploration),
                 view=None,
             )
             return

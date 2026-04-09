@@ -12,6 +12,7 @@ from src.services.formulas import (
     calculate_effective_stamina_max,
 )
 from src.services.player_service import get_player_profile, get_rest_status
+from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
 
 PROFILE_PAGE_OPTIONS = (
     {
@@ -52,6 +53,8 @@ def build_profile_embed(
     room_mention = f"<#{location.room_id}>"
     rest_minutes, recovered_stamina = get_rest_status(player)
     status_value = "Resting" if player.is_resting else "Available"
+    reputation_label = get_location_reputation_label(player.location)
+    reputation_title = get_location_reputation_title(player, player.location)
 
     embed = discord.Embed(
         title=f"{discord_user.display_name}'s Soul Record",
@@ -86,7 +89,10 @@ def build_profile_embed(
         )
         embed.add_field(
             name="Derived",
-            value=f"Spiritual Pressure: **{player.spiritual_pressure}**",
+            value=(
+                f"Spiritual Pressure: **{player.spiritual_pressure}**\n"
+                f"{reputation_label}: **{reputation_title}**"
+            ),
             inline=False,
         )
         if player.is_resting:
@@ -192,6 +198,7 @@ def build_profile_embed(
             value=(
                 f"Location: **{location.name}**\n"
                 f"Room: {room_mention}\n"
+                f"{reputation_label}: **{reputation_title}**\n"
                 f"Created: {discord.utils.format_dt(player.created_at, 'F')}"
             ),
             inline=True,
@@ -241,7 +248,11 @@ def build_profile_embed(
     )
     embed.add_field(
         name="Location",
-        value=f"**{location.name}**\nRoom: {room_mention}",
+        value=(
+            f"**{location.name}**\n"
+            f"Room: {room_mention}\n"
+            f"{reputation_label}: **{reputation_title}**"
+        ),
         inline=False,
     )
     embed.add_field(

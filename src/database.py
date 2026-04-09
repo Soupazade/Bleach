@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS player_profiles (
     reiatsu INTEGER NOT NULL DEFAULT 0,
     trait TEXT NOT NULL DEFAULT 'resilient',
     location TEXT NOT NULL DEFAULT 'rukongai_streets',
+    rukongai_rep INTEGER NOT NULL DEFAULT 0,
     is_resting BOOLEAN NOT NULL DEFAULT FALSE,
     rest_start_time TIMESTAMPTZ,
     rest_stamina_snapshot INTEGER,
@@ -101,6 +102,7 @@ PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS reiatsu INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS trait TEXT NOT NULL DEFAULT 'resilient'",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'rukongai_streets'",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rukongai_rep INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS is_resting BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_start_time TIMESTAMPTZ",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_stamina_snapshot INTEGER",
@@ -238,6 +240,16 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
 
         for statement in PLAYER_PROFILE_COLUMN_DEFAULTS:
             await connection.execute(statement)
+
+        await connection.execute(
+            """
+            UPDATE player_profiles
+            SET rukongai_rep = GREATEST(-100, LEAST(100, COALESCE(rukongai_rep, 0)))
+            WHERE rukongai_rep IS NULL
+               OR rukongai_rep < -100
+               OR rukongai_rep > 100
+            """
+        )
 
         await connection.execute(CREATE_PLAYER_PROFILE_USER_ID_INDEX)
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_TABLE)
