@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import discord
@@ -69,6 +71,92 @@ def _cancel_player_travel_task(bot: "BleachBot", user_id: int) -> bool:
 
     task.cancel()
     return True
+
+
+def _can_bulk_delete(message: discord.Message) -> bool:
+    return (discord.utils.utcnow() - message.created_at) < timedelta(days=14)
+
+
+async def _delete_single_message(
+    message: discord.Message,
+    *,
+    reason: str,
+    retries: int = 3,
+) -> bool:
+    for attempt in range(retries):
+        try:
+            await message.delete(reason=reason)
+            return True
+        except discord.NotFound:
+            return False
+        except (discord.DiscordServerError, discord.HTTPException):
+            if attempt == retries - 1:
+                return False
+            await asyncio.sleep(0.8 * (attempt + 1))
+
+    return False
+
+
+async def _delete_recent_batch(
+    channel: discord.TextChannel | discord.Thread,
+    messages: list[discord.Message],
+    *,
+    reason: str,
+) -> tuple[int, int]:
+    if not messages:
+        return 0, 0
+
+    try:
+        if len(messages) == 1:
+            success = await _delete_single_message(messages[0], reason=reason)
+            return (1, 0) if success else (0, 1)
+
+        await channel.delete_messages(messages, reason=reason)
+        return len(messages), 0
+    except discord.NotFound:
+        return 0, len(messages)
+    except (discord.DiscordServerError, discord.HTTPException):
+        deleted = 0
+        failed = 0
+        for message in messages:
+            if await _delete_single_message(message, reason=reason):
+                deleted += 1
+            else:
+                failed += 1
+        return deleted, failed
+
+
+async def _purge_channel_messages(
+    channel: discord.TextChannel | discord.Thread,
+    *,
+    limit: int,
+    reason: str,
+) -> tuple[int, int, int]:
+    messages = [message async for message in channel.history(limit=limit)]
+    recent_messages = [message for message in messages if _can_bulk_delete(message)]
+    old_messages = [message for message in messages if not _can_bulk_delete(message)]
+
+    deleted = 0
+    failed = 0
+
+    for index in range(0, len(recent_messages), 100):
+        batch_deleted, batch_failed = await _delete_recent_batch(
+            channel,
+            recent_messages[index:index + 100],
+            reason=reason,
+        )
+        deleted += batch_deleted
+        failed += batch_failed
+        await asyncio.sleep(0.35)
+
+    for message in old_messages:
+        if await _delete_single_message(message, reason=reason):
+            deleted += 1
+        else:
+            failed += 1
+        await asyncio.sleep(0.35)
+
+    return deleted, failed, len(old_messages)
 
 
 def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_state) -> discord.Embed:
@@ -219,7 +307,8 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         await interaction.response.defer(ephemeral=True)
-        deleted_messages = await channel.purge(
+        deleted_count, failed_count, old_count = await _purge_channel_messages(
+            channel,
             limit=amount,
             reason=f"Purged by {interaction.user} via /purge",
         )
@@ -229,8 +318,21 @@ def register_staff_commands(bot: "BleachBot") -> None:
             description=f"Cleared recent chat history in {channel.mention}.",
             color=discord.Color.orange(),
         )
-        embed.add_field(name="Deleted", value=f"**{len(deleted_messages)}** message(s)", inline=True)
+        embed.add_field(name="Deleted", value=f"**{deleted_count}** message(s)", inline=True)
         embed.add_field(name="Requested", value=f"**{amount}**", inline=True)
+        embed.add_field(name="Failed", value=f"**{failed_count}**", inline=True)
+        if old_count > 0:
+            embed.add_field(
+                name="Older Messages",
+                value=f"**{old_count}** older message(s) were cleared with slower single deletes.",
+                inline=False,
+            )
+        if failed_count > 0:
+            embed.add_field(
+                name="Note",
+                value="Some messages could not be deleted because Discord returned a temporary error or the messages were already gone.",
+                inline=False,
+            )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="resetplayer", description="Delete a player's profile so they must use /start again.")
