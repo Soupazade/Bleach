@@ -32,6 +32,7 @@ class PendingExplorationChoice:
     channel_id: int
     message_id: int | None
     session_kind: str
+    npc_id: str | None
     location: str
     approach: str
     start_time: datetime
@@ -56,6 +57,7 @@ class PendingExplorationChoice:
             channel_id=int(record["channel_id"]),
             message_id=int(record["message_id"]) if record["message_id"] is not None else None,
             session_kind=str(record["session_kind"]),
+            npc_id=str(record["npc_id"]) if record["npc_id"] is not None else None,
             location=str(record["location"]),
             approach=str(record["approach"]),
             start_time=record["start_time"],

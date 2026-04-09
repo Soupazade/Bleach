@@ -35,6 +35,9 @@ def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord
     elif prompt.prompt_kind == "special_event":
         color = discord.Color.red()
         footer_text = "The opportunity turned dangerous fast."
+    elif prompt.prompt_kind == "npc_event":
+        color = discord.Color.from_rgb(130, 108, 72)
+        footer_text = "Some faces return to you in Rukongai."
 
     embed = discord.Embed(
         title=prompt.event_title,

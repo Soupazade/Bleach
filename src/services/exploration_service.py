@@ -23,9 +23,15 @@ from src.data.exploration import (
     get_random_special_event,
 )
 from src.data.locations import get_location_definition
+from src.data.npcs import get_npc_definition
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
 from src.services.formulas import apply_experience_gain, format_remaining_duration
+from src.services.npc_service import (
+    get_eligible_npc_encounter,
+    get_npc_encounter_definition,
+    upsert_player_npc_progress,
+)
 from src.services.player_service import get_or_sync_player_record, update_player_record
 
 if TYPE_CHECKING:
@@ -46,6 +52,7 @@ PENDING_EXPLORATION_CHOICE_COLUMNS = """
     channel_id,
     message_id,
     session_kind,
+    npc_id,
     location,
     approach,
     start_time,
@@ -105,7 +112,7 @@ class ExplorationDecisionOptionRender:
 @dataclass(slots=True)
 class ExplorationDecisionPrompt:
     session: PendingExplorationChoice
-    prompt_kind: Literal["decision", "special_offer", "special_event"]
+    prompt_kind: Literal["decision", "special_offer", "special_event", "npc_event"]
     event_title: str
     step_title: str
     description: str
@@ -272,9 +279,12 @@ async def create_active_exploration(
 async def create_pending_exploration_choice(
     connection: Connection,
     exploration: ActiveExploration,
-    event: ExplorationDecisionEventDefinition,
     *,
+    event_key: str,
+    event_flow: str,
+    current_step: str,
     session_kind: str = "decision",
+    npc_id: str | None = None,
     special_event_key: str | None = None,
     base_resolution: ExplorationResolution | None = None,
 ) -> PendingExplorationChoice:
@@ -285,6 +295,7 @@ async def create_pending_exploration_choice(
             channel_id,
             message_id,
             session_kind,
+            npc_id,
             location,
             approach,
             start_time,
@@ -300,21 +311,22 @@ async def create_pending_exploration_choice(
             base_xp,
             base_combat_outcome
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         RETURNING {PENDING_EXPLORATION_CHOICE_COLUMNS}
         """,
         exploration.user_id,
         exploration.channel_id,
         None,
         session_kind,
+        npc_id,
         exploration.location,
         exploration.approach,
         exploration.start_time,
         exploration.end_time,
-        event.key,
+        event_key,
         special_event_key,
-        event.flow_type,
-        event.initial_step_id,
+        event_flow,
+        current_step,
         [],
         base_resolution.event_type if base_resolution is not None else None,
         base_resolution.title if base_resolution is not None else None,
@@ -601,7 +613,9 @@ async def _create_special_offer(
     session = await create_pending_exploration_choice(
         connection,
         base_resolution.exploration,
-        special_event,
+        event_key=special_event.key,
+        event_flow=special_event.flow_type,
+        current_step=special_event.initial_step_id,
         session_kind="special_offer",
         special_event_key=special_event.key,
         base_resolution=base_resolution,
@@ -637,6 +651,31 @@ def _build_resolution_from_pending_base(
 def _build_decision_prompt(session: PendingExplorationChoice) -> ExplorationDecisionPrompt:
     approach = get_explore_approach(session.approach)
     location = get_location_definition(session.location)
+
+    if session.session_kind == "npc_event":
+        if session.npc_id is None:
+            raise ValueError("NPC event session is missing npc_id.")
+
+        npc = get_npc_definition(session.npc_id)
+        encounter = get_npc_encounter_definition(session.npc_id, session.event_key)
+        options = tuple(
+            ExplorationDecisionOptionRender(
+                slot=index,
+                label=option.label,
+                style=option.style,  # type: ignore[arg-type]
+            )
+            for index, option in enumerate(encounter.options, start=1)
+        )
+        return ExplorationDecisionPrompt(
+            session=session,
+            prompt_kind="npc_event",
+            event_title=encounter.title,
+            step_title=f"{npc.name} | Stage {encounter.stage_number}",
+            description=encounter.description,
+            step_number=1,
+            total_steps=1,
+            options=options,
+        )
 
     if session.session_kind == "special_offer":
         special_event = get_decision_event_definition(
@@ -794,6 +833,27 @@ async def resolve_exploration(
             if exploration.end_time > datetime.now(timezone.utc) and not force:
                 return None
 
+            eligible_npc_encounter = await get_eligible_npc_encounter(
+                connection,
+                user_id=user_id,
+                location_key=exploration.location,
+            )
+            if eligible_npc_encounter is not None:
+                pending_choice = await create_pending_exploration_choice(
+                    connection,
+                    exploration,
+                    event_key=eligible_npc_encounter.encounter.key,
+                    event_flow="single_choice",
+                    current_step="npc_step",
+                    session_kind="npc_event",
+                    npc_id=eligible_npc_encounter.npc.id,
+                )
+                await delete_active_exploration(connection, user_id)
+                return ExplorationPostResult(
+                    status="choice_prompt",
+                    prompt=_build_decision_prompt(pending_choice),
+                )
+
             approach = get_explore_approach(exploration.approach)
             resolution_flow = _roll_resolution_flow(approach)
 
@@ -833,7 +893,13 @@ async def resolve_exploration(
                 )
 
             event = get_random_decision_event(exploration.location, resolution_flow)
-            pending_choice = await create_pending_exploration_choice(connection, exploration, event)
+            pending_choice = await create_pending_exploration_choice(
+                connection,
+                exploration,
+                event_key=event.key,
+                event_flow=event.flow_type,
+                current_step=event.initial_step_id,
+            )
             await delete_active_exploration(connection, user_id)
             return ExplorationPostResult(
                 status="choice_prompt",
@@ -860,6 +926,38 @@ async def advance_exploration_choice(
             session = PendingExplorationChoice.from_record(session_record)
             if session.user_id != user_id:
                 return ExplorationChoiceAdvanceResult(status="missing")
+
+            if session.session_kind == "npc_event":
+                if session.npc_id is None:
+                    return ExplorationChoiceAdvanceResult(status="missing")
+
+                encounter = get_npc_encounter_definition(session.npc_id, session.event_key)
+                if option_slot < 1 or option_slot > len(encounter.options):
+                    return ExplorationChoiceAdvanceResult(status="missing")
+
+                selected_option = encounter.options[option_slot - 1]
+                outcome = selected_option.outcome
+                player, levels_gained = await _apply_xp_gain(connection, user_id, outcome.xp_reward)
+                await upsert_player_npc_progress(
+                    connection,
+                    user_id=user_id,
+                    npc_id=session.npc_id,
+                    state=outcome.next_state,
+                    stage=outcome.next_stage,
+                    last_encounter_at=datetime.now(timezone.utc),
+                )
+                await delete_pending_choice(connection, user_id)
+                resolution = ExplorationResolution(
+                    exploration=session.to_active_exploration(),
+                    player=player,
+                    event_type=outcome.event_type,  # type: ignore[arg-type]
+                    title=outcome.title,
+                    description=outcome.description,
+                    xp_gained=outcome.xp_reward,
+                    levels_gained=levels_gained,
+                    combat_outcome=outcome.combat_outcome,
+                )
+                return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
 
             if session.session_kind == "special_offer":
                 player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)

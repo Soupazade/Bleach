@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS active_exploration_choices (
     channel_id BIGINT NOT NULL,
     message_id BIGINT,
     session_kind TEXT NOT NULL DEFAULT 'decision',
+    npc_id TEXT,
     location TEXT NOT NULL,
     approach TEXT NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
@@ -66,6 +67,19 @@ CREATE TABLE IF NOT EXISTS active_exploration_choices (
     base_combat_outcome TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+CREATE_PLAYER_NPC_PROGRESS_TABLE = """
+CREATE TABLE IF NOT EXISTS player_npc_progress (
+    user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    npc_id TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'default',
+    stage INTEGER NOT NULL DEFAULT 0,
+    last_encounter_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, npc_id)
 );
 """
 
@@ -113,6 +127,7 @@ WHERE message_id IS NOT NULL;
 
 ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS = (
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS session_kind TEXT NOT NULL DEFAULT 'decision'",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS npc_id TEXT",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS special_event_key TEXT",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_event_type TEXT",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_title TEXT",
@@ -120,6 +135,11 @@ ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS = (
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_xp INTEGER",
     "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_combat_outcome TEXT",
 )
+
+CREATE_PLAYER_NPC_PROGRESS_LOOKUP_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_npc_progress_user_npc
+ON player_npc_progress (user_id, npc_id);
+"""
 
 
 async def create_pool() -> asyncpg.Pool | None:
@@ -226,3 +246,5 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         for statement in ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS:
             await connection.execute(statement)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX)
+        await connection.execute(CREATE_PLAYER_NPC_PROGRESS_TABLE)
+        await connection.execute(CREATE_PLAYER_NPC_PROGRESS_LOOKUP_INDEX)
