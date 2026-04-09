@@ -177,6 +177,36 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
 
 
 def register_staff_commands(bot: "BleachBot") -> None:
+    @bot.tree.command(name="purge", description="Delete recent messages from the current channel.")
+    @app_commands.guild_only()
+    @require_staff_rank("mod")
+    async def purge(
+        interaction: discord.Interaction,
+        amount: app_commands.Range[int, 1, 500],
+    ) -> None:
+        channel = interaction.channel
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            await interaction.response.send_message(
+                "This channel type does not support message purging.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        deleted_messages = await channel.purge(
+            limit=amount,
+            reason=f"Purged by {interaction.user} via /purge",
+        )
+
+        embed = discord.Embed(
+            title="Messages Purged",
+            description=f"Cleared recent chat history in {channel.mention}.",
+            color=discord.Color.orange(),
+        )
+        embed.add_field(name="Deleted", value=f"**{len(deleted_messages)}** message(s)", inline=True)
+        embed.add_field(name="Requested", value=f"**{amount}**", inline=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     @bot.tree.command(name="resetplayer", description="Delete a player's profile so they must use /start again.")
     @app_commands.guild_only()
     @require_staff_rank("super_admin")
