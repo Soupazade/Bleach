@@ -402,7 +402,7 @@ LOCATION_EXPLORATION_DEFINITIONS = {
         menu_description=(
             "Nothing comes easy in these streets. Pick your next move carefully and chase a small edge before the district swallows the chance."
         ),
-        menu_footer="Three local openings appear at a time. Timed actions replace flat cooldowns.",
+        menu_footer='"If miracles only happen once, what are they called the second time?"',
         approach_pool=RUKONGAI_STREETS_APPROACHES,
         event_pool=RUKONGAI_STREETS_EVENTS,
     ),
