@@ -217,10 +217,10 @@ def format_reputation_stamina_text(stamina_cost: int, modifier: int, reputation_
 
 def format_reputation_change_text(delta: int) -> str:
     if delta > 0:
-        return f"**+{delta} reputation**"
+        return "**Reputation improved**"
     if delta < 0:
-        return f"**{delta} reputation**"
-    return "**No change**"
+        return "**Reputation worsened**"
+    return "**Reputation held steady**"
 
 
 def get_location_reputation_label(location_key: str) -> str:
