@@ -164,7 +164,7 @@ class ExplorationCombatView(discord.ui.View):
         if result.status == "updated" and result.combat is not None:
             await interaction.response.edit_message(
                 embed=build_exploration_combat_embed(result.combat),
-                view=self,
+                view=ExplorationCombatView(self.bot),
             )
             return
 

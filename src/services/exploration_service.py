@@ -1858,14 +1858,23 @@ async def resolve_and_post_exploration(
 
 async def _run_exploration_task(bot: "BleachBot", exploration: ActiveExploration) -> None:
     try:
-        delay_seconds = max(
-            0.0,
-            (exploration.end_time.astimezone(timezone.utc) - datetime.now(timezone.utc)).total_seconds(),
-        )
-        if delay_seconds > 0:
-            await asyncio.sleep(delay_seconds)
+        while True:
+            delay_seconds = (
+                exploration.end_time.astimezone(timezone.utc) - datetime.now(timezone.utc)
+            ).total_seconds()
+            if delay_seconds > 0:
+                await asyncio.sleep(delay_seconds + 0.25)
 
-        await resolve_and_post_exploration(bot, exploration.user_id)
+            post_result = await resolve_and_post_exploration(bot, exploration.user_id)
+            if post_result is not None:
+                break
+
+            refreshed_exploration = await get_active_exploration(bot.db_pool, exploration.user_id)
+            if refreshed_exploration is None:
+                break
+
+            exploration = refreshed_exploration
+            await asyncio.sleep(0.5)
     except asyncio.CancelledError:
         raise
     except Exception:
