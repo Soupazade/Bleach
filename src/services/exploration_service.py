@@ -14,14 +14,13 @@ from src.data.exploration import (
     ExploreApproachDefinition,
     ExploreEventType,
     ExplorationDecisionEventDefinition,
-    ExplorationDecisionOptionDefinition,
     ExplorationEventTemplate,
-    ExplorationOutcomeDefinition,
     get_decision_event_definition,
     get_decision_step_definition,
     get_explore_approach,
     get_location_event_pool,
     get_random_decision_event,
+    get_random_special_event,
 )
 from src.data.locations import get_location_definition
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
@@ -46,14 +45,21 @@ PENDING_EXPLORATION_CHOICE_COLUMNS = """
     user_id,
     channel_id,
     message_id,
+    session_kind,
     location,
     approach,
     start_time,
     end_time,
     event_key,
+    special_event_key,
     event_flow,
     current_step,
     choice_history,
+    base_event_type,
+    base_title,
+    base_description,
+    base_xp,
+    base_combat_outcome,
     created_at,
     updated_at
 """
@@ -99,6 +105,7 @@ class ExplorationDecisionOptionRender:
 @dataclass(slots=True)
 class ExplorationDecisionPrompt:
     session: PendingExplorationChoice
+    prompt_kind: Literal["decision", "special_offer", "special_event"]
     event_title: str
     step_title: str
     description: str
@@ -116,9 +123,10 @@ class ExplorationPostResult:
 
 @dataclass(slots=True)
 class ExplorationChoiceAdvanceResult:
-    status: Literal["missing", "advanced", "resolved"]
+    status: Literal["missing", "advanced", "resolved", "insufficient_stamina"]
     prompt: ExplorationDecisionPrompt | None = None
     resolution: ExplorationResolution | None = None
+    required_stamina: int = 0
 
 
 async def fetch_active_exploration_record(
@@ -265,6 +273,10 @@ async def create_pending_exploration_choice(
     connection: Connection,
     exploration: ActiveExploration,
     event: ExplorationDecisionEventDefinition,
+    *,
+    session_kind: str = "decision",
+    special_event_key: str | None = None,
+    base_resolution: ExplorationResolution | None = None,
 ) -> PendingExplorationChoice:
     record = await connection.fetchrow(
         f"""
@@ -272,29 +284,43 @@ async def create_pending_exploration_choice(
             user_id,
             channel_id,
             message_id,
+            session_kind,
             location,
             approach,
             start_time,
             end_time,
             event_key,
+            special_event_key,
             event_flow,
             current_step,
-            choice_history
+            choice_history,
+            base_event_type,
+            base_title,
+            base_description,
+            base_xp,
+            base_combat_outcome
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING {PENDING_EXPLORATION_CHOICE_COLUMNS}
         """,
         exploration.user_id,
         exploration.channel_id,
         None,
+        session_kind,
         exploration.location,
         exploration.approach,
         exploration.start_time,
         exploration.end_time,
         event.key,
+        special_event_key,
         event.flow_type,
         event.initial_step_id,
         [],
+        base_resolution.event_type if base_resolution is not None else None,
+        base_resolution.title if base_resolution is not None else None,
+        base_resolution.description if base_resolution is not None else None,
+        base_resolution.xp_gained if base_resolution is not None else None,
+        base_resolution.combat_outcome if base_resolution is not None else None,
     )
     return PendingExplorationChoice.from_record(record)
 
@@ -380,6 +406,15 @@ def _roll_resolution_flow(approach: ExploreApproachDefinition) -> ExploreFlowTyp
         weights=(instant_weight, single_weight, multi_weight),
         k=1,
     )[0]
+
+
+def _roll_special_trigger(approach: ExploreApproachDefinition) -> bool:
+    chance_by_risk = {
+        "low": 0.10,
+        "medium": 0.12,
+        "high": 0.15,
+    }
+    return random.random() < chance_by_risk.get(approach.risk_tier, 0.12)
 
 
 def _format_event_description(
@@ -481,6 +516,10 @@ def _resolve_outcome_xp(
         "approach_high",
         "combat_win",
         "combat_lose",
+        "special_base",
+        "special_high",
+        "special_combat_win",
+        "special_combat_lose",
     ],
 ) -> int:
     if xp_profile == "none":
@@ -489,6 +528,10 @@ def _resolve_outcome_xp(
         return random.randint(12, 20)
     if xp_profile == "combat_lose":
         return 5
+    if xp_profile == "special_combat_win":
+        return random.randint(max(20, approach.xp_min * 2), max(30, approach.xp_max * 2 + 4))
+    if xp_profile == "special_combat_lose":
+        return random.randint(max(4, approach.xp_min - 1), max(8, approach.xp_min + 2))
     if xp_profile == "approach_low":
         xp_floor = max(1, approach.xp_min - 3)
         xp_ceiling = max(xp_floor, approach.xp_min)
@@ -496,6 +539,14 @@ def _resolve_outcome_xp(
     if xp_profile == "approach_high":
         xp_floor = approach.xp_min + 2
         xp_ceiling = max(xp_floor, approach.xp_max + 4)
+        return random.randint(xp_floor, xp_ceiling)
+    if xp_profile == "special_high":
+        xp_floor = max(approach.xp_min * 2, approach.xp_max + 6)
+        xp_ceiling = max(xp_floor, approach.xp_max * 2 + 8)
+        return random.randint(xp_floor, xp_ceiling)
+    if xp_profile == "special_base":
+        xp_floor = max(approach.xp_min * 2 - 2, approach.xp_max + 2)
+        xp_ceiling = max(xp_floor, approach.xp_max * 2)
         return random.randint(xp_floor, xp_ceiling)
 
     return random.randint(approach.xp_min, approach.xp_max)
@@ -527,12 +578,99 @@ async def _apply_xp_gain(
     return PlayerProfile.from_record(updated_player_record), levels_gained
 
 
+async def _get_current_player(
+    connection: Connection,
+    user_id: int,
+) -> PlayerProfile:
+    player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
+    if player_sync is None:
+        raise ValueError(f"Missing player profile for user {user_id}")
+
+    return PlayerProfile.from_record(player_sync.record)
+
+
+def _should_trigger_special_opportunity(approach: ExploreApproachDefinition) -> bool:
+    return _roll_special_trigger(approach)
+
+
+async def _create_special_offer(
+    connection: Connection,
+    base_resolution: ExplorationResolution,
+) -> ExplorationDecisionPrompt:
+    special_event = get_random_special_event(base_resolution.exploration.location)
+    session = await create_pending_exploration_choice(
+        connection,
+        base_resolution.exploration,
+        special_event,
+        session_kind="special_offer",
+        special_event_key=special_event.key,
+        base_resolution=base_resolution,
+    )
+    return _build_decision_prompt(session)
+
+
+def _build_resolution_from_pending_base(
+    session: PendingExplorationChoice,
+    player: PlayerProfile,
+    levels_gained: int,
+) -> ExplorationResolution:
+    if (
+        session.base_event_type is None
+        or session.base_title is None
+        or session.base_description is None
+        or session.base_xp is None
+    ):
+        raise ValueError("Pending special offer is missing its stored base resolution.")
+
+    return ExplorationResolution(
+        exploration=session.to_active_exploration(),
+        player=player,
+        event_type=session.base_event_type,  # type: ignore[arg-type]
+        title=session.base_title,
+        description=session.base_description,
+        xp_gained=session.base_xp,
+        levels_gained=levels_gained,
+        combat_outcome=session.base_combat_outcome,
+    )
+
+
 def _build_decision_prompt(session: PendingExplorationChoice) -> ExplorationDecisionPrompt:
-    event = get_decision_event_definition(session.location, session.event_key)
-    step = get_decision_step_definition(event, session.current_step)
     approach = get_explore_approach(session.approach)
     location = get_location_definition(session.location)
+
+    if session.session_kind == "special_offer":
+        special_event = get_decision_event_definition(
+            session.location,
+            session.special_event_key or session.event_key,
+        )
+        description = (
+            f"Your **{approach.label}** turns up something rare in **{location.name}**. "
+            f"**{special_event.title}** is within reach if you spend another **10 stamina** and push deeper."
+        )
+        options = (
+            ExplorationDecisionOptionRender(slot=1, label="Engage (-10 Stamina)", style="danger"),
+            ExplorationDecisionOptionRender(slot=2, label="Ignore", style="secondary"),
+        )
+        return ExplorationDecisionPrompt(
+            session=session,
+            prompt_kind="special_offer",
+            event_title="Special Opportunity",
+            step_title="An unusual opportunity appears",
+            description=description,
+            step_number=1,
+            total_steps=2,
+            options=options,
+        )
+
+    event = get_decision_event_definition(session.location, session.event_key)
+    step = get_decision_step_definition(event, session.current_step)
     step_number = min(event.step_count, len(session.choice_history) + 1)
+    total_steps = event.step_count
+    prompt_kind: Literal["decision", "special_offer", "special_event"] = "decision"
+    if session.session_kind == "special_event":
+        step_number = 2
+        total_steps = 2
+        prompt_kind = "special_event"
 
     options = tuple(
         ExplorationDecisionOptionRender(
@@ -544,11 +682,12 @@ def _build_decision_prompt(session: PendingExplorationChoice) -> ExplorationDeci
     )
     return ExplorationDecisionPrompt(
         session=session,
+        prompt_kind=prompt_kind,
         event_title=event.title,
         step_title=step.title,
         description=_format_text(step.description, approach=approach, location_name=location.name),
         step_number=step_number,
-        total_steps=event.step_count,
+        total_steps=total_steps,
         options=options,
     )
 
@@ -660,20 +799,37 @@ async def resolve_exploration(
 
             if resolution_flow == "instant":
                 event_type, title, description, xp_gained, combat_outcome = roll_instant_exploration_event(exploration)
+                current_player = await _get_current_player(connection, user_id)
+                base_resolution = ExplorationResolution(
+                    exploration=exploration,
+                    player=current_player,
+                    event_type=event_type,
+                    title=title,
+                    description=description,
+                    xp_gained=xp_gained,
+                    levels_gained=0,
+                    combat_outcome=combat_outcome,
+                )
+                if _should_trigger_special_opportunity(approach):
+                    await delete_active_exploration(connection, user_id)
+                    prompt = await _create_special_offer(connection, base_resolution)
+                    return ExplorationPostResult(status="choice_prompt", prompt=prompt)
+
                 player, levels_gained = await _apply_xp_gain(connection, user_id, xp_gained)
                 await delete_active_exploration(connection, user_id)
+                resolution = ExplorationResolution(
+                    exploration=exploration,
+                    player=player,
+                    event_type=event_type,
+                    title=title,
+                    description=description,
+                    xp_gained=xp_gained,
+                    levels_gained=levels_gained,
+                    combat_outcome=combat_outcome,
+                )
                 return ExplorationPostResult(
                     status="instant",
-                    resolution=ExplorationResolution(
-                        exploration=exploration,
-                        player=player,
-                        event_type=event_type,
-                        title=title,
-                        description=description,
-                        xp_gained=xp_gained,
-                        levels_gained=levels_gained,
-                        combat_outcome=combat_outcome,
-                    ),
+                    resolution=resolution,
                 )
 
             event = get_random_decision_event(exploration.location, resolution_flow)
@@ -705,6 +861,62 @@ async def advance_exploration_choice(
             if session.user_id != user_id:
                 return ExplorationChoiceAdvanceResult(status="missing")
 
+            if session.session_kind == "special_offer":
+                player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
+                if player_sync is None:
+                    return ExplorationChoiceAdvanceResult(status="missing")
+
+                player = PlayerProfile.from_record(player_sync.record)
+                if option_slot == 2:
+                    if session.base_xp is None:
+                        return ExplorationChoiceAdvanceResult(status="missing")
+
+                    player, levels_gained = await _apply_xp_gain(connection, user_id, session.base_xp)
+                    resolution = _build_resolution_from_pending_base(session, player, levels_gained)
+                    await delete_pending_choice(connection, user_id)
+                    return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
+
+                if option_slot != 1:
+                    return ExplorationChoiceAdvanceResult(status="missing")
+
+                extra_stamina_cost = 10
+                if player.stamina_current < extra_stamina_cost:
+                    return ExplorationChoiceAdvanceResult(
+                        status="insufficient_stamina",
+                        prompt=_build_decision_prompt(session),
+                        required_stamina=extra_stamina_cost,
+                    )
+
+                special_event_key = session.special_event_key
+                if special_event_key is None:
+                    return ExplorationChoiceAdvanceResult(status="missing")
+
+                special_event = get_decision_event_definition(session.location, special_event_key)
+                now = datetime.now(timezone.utc)
+                await update_player_record(
+                    connection,
+                    user_id,
+                    {
+                        "stamina_current": player.stamina_current - extra_stamina_cost,
+                        "stamina_updated_at": now,
+                    },
+                )
+                updated_session = await update_pending_choice(
+                    connection,
+                    user_id,
+                    {
+                        "session_kind": "special_event",
+                        "event_key": special_event.key,
+                        "event_flow": special_event.flow_type,
+                        "current_step": special_event.initial_step_id,
+                        "choice_history": ["engage"],
+                    },
+                )
+                return ExplorationChoiceAdvanceResult(
+                    status="advanced",
+                    prompt=_build_decision_prompt(updated_session),
+                )
+
             event = get_decision_event_definition(session.location, session.event_key)
             step = get_decision_step_definition(event, session.current_step)
             if option_slot < 1 or option_slot > len(step.options):
@@ -733,12 +945,30 @@ async def advance_exploration_choice(
             approach = get_explore_approach(session.approach)
             outcome = selected_option.outcome
             xp_gained = _resolve_outcome_xp(approach, outcome.xp_profile)
+            current_player = await _get_current_player(connection, user_id)
+            base_resolution = ExplorationResolution(
+                exploration=session.to_active_exploration(),
+                player=current_player,
+                event_type=outcome.event_type,
+                title=outcome.title,
+                description=_format_text(
+                    outcome.description,
+                    approach=approach,
+                    location_name=get_location_definition(session.location).name,
+                ),
+                xp_gained=xp_gained,
+                levels_gained=0,
+                combat_outcome=outcome.combat_outcome,
+            )
+            if session.session_kind == "decision" and _should_trigger_special_opportunity(approach):
+                await delete_pending_choice(connection, user_id)
+                prompt = await _create_special_offer(connection, base_resolution)
+                return ExplorationChoiceAdvanceResult(status="advanced", prompt=prompt)
+
             player, levels_gained = await _apply_xp_gain(connection, user_id, xp_gained)
             await delete_pending_choice(connection, user_id)
-
-            exploration = session.to_active_exploration()
             resolution = ExplorationResolution(
-                exploration=exploration,
+                exploration=session.to_active_exploration(),
                 player=player,
                 event_type=outcome.event_type,
                 title=outcome.title,

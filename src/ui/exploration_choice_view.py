@@ -27,10 +27,19 @@ BUTTON_STYLE_MAP = {
 def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord.Embed:
     exploration = prompt.session.to_active_exploration()
     approach = get_explore_approach(prompt.session.approach)
+    color = discord.Color.from_rgb(88, 112, 168)
+    footer_text = "Choose quickly. The streets do not wait."
+    if prompt.prompt_kind == "special_offer":
+        color = discord.Color.dark_orange()
+        footer_text = "Engaging costs an extra 10 stamina."
+    elif prompt.prompt_kind == "special_event":
+        color = discord.Color.red()
+        footer_text = "The opportunity turned dangerous fast."
+
     embed = discord.Embed(
         title=prompt.event_title,
         description=prompt.description,
-        color=discord.Color.from_rgb(88, 112, 168),
+        color=color,
     )
     embed.add_field(
         name="Decision",
@@ -48,7 +57,7 @@ def build_exploration_choice_embed(prompt: ExplorationDecisionPrompt) -> discord
         ),
         inline=True,
     )
-    embed.set_footer(text="Choose quickly. The streets do not wait.")
+    embed.set_footer(text=footer_text)
     return embed
 
 
@@ -122,6 +131,13 @@ class ExplorationChoiceView(discord.ui.View):
             await interaction.response.edit_message(
                 embed=build_exploration_choice_embed(result.prompt),
                 view=ExplorationChoiceView(self.bot, result.prompt),
+            )
+            return
+
+        if result.status == "insufficient_stamina":
+            await interaction.response.send_message(
+                f"You need **{result.required_stamina} stamina** available to engage this special opportunity.",
+                ephemeral=True,
             )
             return
 

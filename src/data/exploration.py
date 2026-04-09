@@ -14,6 +14,10 @@ ExploreXpProfile = Literal[
     "approach_high",
     "combat_win",
     "combat_lose",
+    "special_base",
+    "special_high",
+    "special_combat_win",
+    "special_combat_lose",
 ]
 ButtonStyleName = Literal["primary", "secondary", "success", "danger"]
 
@@ -112,6 +116,8 @@ class LocationExploreDefinition:
     event_pool: LocationEventPool
     single_choice_events: tuple[ExplorationDecisionEventDefinition, ...]
     multi_step_events: tuple[ExplorationDecisionEventDefinition, ...]
+    special_offer_templates: tuple[ExplorationEventTemplate, ...]
+    special_events: tuple[ExplorationDecisionEventDefinition, ...]
 
 
 def _biases(
@@ -822,6 +828,202 @@ RUKONGAI_STREETS_MULTI_STEP_EVENTS = (
     ),
 )
 
+RUKONGAI_STREETS_SPECIAL_OFFERS = (
+    ExplorationEventTemplate(
+        title="A Hidden Pull in the District",
+        description=(
+            "Just as your run seems settled, **{approach}** turns up something unusual: a buried spiritual pull and the promise of a better score if you press your luck."
+        ),
+    ),
+    ExplorationEventTemplate(
+        title="A Rare Opening",
+        description=(
+            "The streets shift after **{approach}**, revealing a narrow chance most souls would miss. It smells like reward, danger, or both."
+        ),
+    ),
+    ExplorationEventTemplate(
+        title="Something Valuable Stirs",
+        description=(
+            "Your **{approach}** uncovers a strange lead that could turn tonight into more than survival. Taking it will cost you more strength."
+        ),
+    ),
+)
+
+RUKONGAI_STREETS_SPECIAL_EVENTS = (
+    ExplorationDecisionEventDefinition(
+        key="rukongai_special_buried_cache",
+        title="Buried Cache Below the Stone",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="The opening is real, but unstable",
+                description=(
+                    "You force your way into the hidden pocket and find a cramped stash site under cracked stone. The cache is real, but the noise has already started to draw eyes."
+                ),
+                options=(
+                    _option(
+                        key="grab_fast",
+                        label="Grab what you can",
+                        style="primary",
+                        outcome=_outcome(
+                            title="Quick Hands, Hard-Won Prize",
+                            description=(
+                                "You take the best of the stash before the alley closes around you. It is not clean, but the payoff hits harder than an ordinary night in Rukongai."
+                            ),
+                            event_type="reward",
+                            xp_profile="special_base",
+                        ),
+                    ),
+                    _option(
+                        key="hold_ground",
+                        label="Hold the site",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Hold the Cache",
+                            description=(
+                                "You plant your feet and fight for the hidden stash when others rush in. The clash is brutal and close, but the reward is real if you endure it."
+                            ),
+                            event_type="combat",
+                            xp_profile="special_combat_win",
+                            combat_outcome="Victory",
+                        ),
+                    ),
+                    _option(
+                        key="pull_back",
+                        label="Pull back with scraps",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="You Settle for Less",
+                            description=(
+                                "You abandon the deepest part of the stash before the danger peaks. The haul is smaller than it could have been, but you still leave with more than you started with."
+                            ),
+                            event_type="choice",
+                            xp_profile="approach_high",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ExplorationDecisionEventDefinition(
+        key="rukongai_special_hollow_nest",
+        title="Weak Hollow Nest",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="The reiatsu trail leads to a nest",
+                description=(
+                    "The unusual pull resolves into a weak hollow nest hidden behind wrecked walls. There is value here, but disturbing it will turn the whole space violent."
+                ),
+                options=(
+                    _option(
+                        key="purge_nest",
+                        label="Purge the nest",
+                        style="danger",
+                        outcome=_outcome(
+                            title="Nest Broken Open",
+                            description=(
+                                "You hit the nest head-on and break it apart under pressure. The reward is bigger than a normal clash, but the risk was real from the first step."
+                            ),
+                            event_type="combat",
+                            xp_profile="special_combat_win",
+                            combat_outcome="Victory",
+                        ),
+                    ),
+                    _option(
+                        key="lure_one_out",
+                        label="Lure one out",
+                        style="primary",
+                        outcome=_outcome(
+                            title="Controlled Risk, Real Gain",
+                            description=(
+                                "You bait only part of the nest into the open and take what you can from the opening. It is slower, safer, and still far richer than a routine street run."
+                            ),
+                            event_type="reward",
+                            xp_profile="special_base",
+                        ),
+                    ),
+                    _option(
+                        key="retreat_scuffed",
+                        label="Retreat when it spikes",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="The Chance Slips Away",
+                            description=(
+                                "You back off when the pressure grows ugly. The opportunity vanishes, and all you carry away is a partial read on what was hiding there."
+                            ),
+                            event_type="flavor",
+                            xp_profile="special_combat_lose",
+                            combat_outcome="Setback",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ExplorationDecisionEventDefinition(
+        key="rukongai_special_gang_route",
+        title="Gang Courier Route",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="You found the handoff lane",
+                description=(
+                    "The rare lead opens onto a courier lane used by local gangs to move food, scraps, and stolen comforts. One bold move could pay out twice as hard as a normal run."
+                ),
+                options=(
+                    _option(
+                        key="hit_courier",
+                        label="Hit the courier",
+                        style="danger",
+                        outcome=_outcome(
+                            title="Courier Broken, Street Watching",
+                            description=(
+                                "You strike the courier route before it can slip away. The score is big, but the whole block will remember the risk you took to get it."
+                            ),
+                            event_type="combat",
+                            xp_profile="special_combat_win",
+                            combat_outcome="Victory",
+                        ),
+                    ),
+                    _option(
+                        key="shadow_and_steal",
+                        label="Shadow and steal",
+                        style="primary",
+                        outcome=_outcome(
+                            title="You Peel Off the Best Cut",
+                            description=(
+                                "You let the route expose itself fully, then strip away its best prize at the right moment. It is a clean score by Rukongai standards."
+                            ),
+                            event_type="reward",
+                            xp_profile="special_high",
+                        ),
+                    ),
+                    _option(
+                        key="take_small_piece",
+                        label="Take a small piece",
+                        style="success",
+                        outcome=_outcome(
+                            title="A Smaller Score, Still Worth It",
+                            description=(
+                                "You avoid the bloodiest version of the chance and settle for a safer cut. It is less than glory, but still better than an ordinary night."
+                            ),
+                            event_type="choice",
+                            xp_profile="special_base",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
 LEGACY_GENERIC_APPROACHES = (
     ExploreApproachDefinition(
         key="cautious_search",
@@ -876,6 +1078,8 @@ LOCATION_EXPLORATION_DEFINITIONS = {
         event_pool=RUKONGAI_STREETS_EVENTS,
         single_choice_events=RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS,
         multi_step_events=RUKONGAI_STREETS_MULTI_STEP_EVENTS,
+        special_offer_templates=RUKONGAI_STREETS_SPECIAL_OFFERS,
+        special_events=RUKONGAI_STREETS_SPECIAL_EVENTS,
     ),
 }
 
@@ -951,12 +1155,26 @@ def get_random_decision_event(
     return random.choice(pool)
 
 
+def get_random_special_offer_template(location_key: str) -> ExplorationEventTemplate:
+    location_definition = get_location_exploration_definition(location_key)
+    return random.choice(location_definition.special_offer_templates)
+
+
+def get_random_special_event(location_key: str) -> ExplorationDecisionEventDefinition:
+    location_definition = get_location_exploration_definition(location_key)
+    return random.choice(location_definition.special_events)
+
+
 def get_decision_event_definition(
     location_key: str,
     event_key: str,
 ) -> ExplorationDecisionEventDefinition:
     location_definition = get_location_exploration_definition(location_key)
-    for event in (*location_definition.single_choice_events, *location_definition.multi_step_events):
+    for event in (
+        *location_definition.single_choice_events,
+        *location_definition.multi_step_events,
+        *location_definition.special_events,
+    ):
         if event.key == event_key:
             return event
 

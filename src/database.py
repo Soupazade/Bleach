@@ -49,14 +49,21 @@ CREATE TABLE IF NOT EXISTS active_exploration_choices (
     user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
     channel_id BIGINT NOT NULL,
     message_id BIGINT,
+    session_kind TEXT NOT NULL DEFAULT 'decision',
     location TEXT NOT NULL,
     approach TEXT NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
     end_time TIMESTAMPTZ NOT NULL,
     event_key TEXT NOT NULL,
+    special_event_key TEXT,
     event_flow TEXT NOT NULL,
     current_step TEXT NOT NULL,
     choice_history TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    base_event_type TEXT,
+    base_title TEXT,
+    base_description TEXT,
+    base_xp INTEGER,
+    base_combat_outcome TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -103,6 +110,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_active_exploration_choices_message_id
 ON active_exploration_choices (message_id)
 WHERE message_id IS NOT NULL;
 """
+
+ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS = (
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS session_kind TEXT NOT NULL DEFAULT 'decision'",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS special_event_key TEXT",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_event_type TEXT",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_title TEXT",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_description TEXT",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_xp INTEGER",
+    "ALTER TABLE active_exploration_choices ADD COLUMN IF NOT EXISTS base_combat_outcome TEXT",
+)
 
 
 async def create_pool() -> asyncpg.Pool | None:
@@ -206,4 +223,6 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_TABLE)
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_TABLE)
+        for statement in ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS:
+            await connection.execute(statement)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX)

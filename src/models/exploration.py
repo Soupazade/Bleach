@@ -31,14 +31,21 @@ class PendingExplorationChoice:
     user_id: int
     channel_id: int
     message_id: int | None
+    session_kind: str
     location: str
     approach: str
     start_time: datetime
     end_time: datetime
     event_key: str
+    special_event_key: str | None
     event_flow: str
     current_step: str
     choice_history: tuple[str, ...]
+    base_event_type: str | None
+    base_title: str | None
+    base_description: str | None
+    base_xp: int | None
+    base_combat_outcome: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -48,14 +55,25 @@ class PendingExplorationChoice:
             user_id=int(record["user_id"]),
             channel_id=int(record["channel_id"]),
             message_id=int(record["message_id"]) if record["message_id"] is not None else None,
+            session_kind=str(record["session_kind"]),
             location=str(record["location"]),
             approach=str(record["approach"]),
             start_time=record["start_time"],
             end_time=record["end_time"],
             event_key=str(record["event_key"]),
+            special_event_key=str(record["special_event_key"]) if record["special_event_key"] is not None else None,
             event_flow=str(record["event_flow"]),
             current_step=str(record["current_step"]),
             choice_history=tuple(record["choice_history"] or ()),
+            base_event_type=str(record["base_event_type"]) if record["base_event_type"] is not None else None,
+            base_title=str(record["base_title"]) if record["base_title"] is not None else None,
+            base_description=str(record["base_description"]) if record["base_description"] is not None else None,
+            base_xp=int(record["base_xp"]) if record["base_xp"] is not None else None,
+            base_combat_outcome=(
+                str(record["base_combat_outcome"])
+                if record["base_combat_outcome"] is not None
+                else None
+            ),
             created_at=record["created_at"],
             updated_at=record["updated_at"],
         )
