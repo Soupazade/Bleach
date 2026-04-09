@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
 def build_explore_menu_embed(
     player: PlayerProfile,
-    approaches: tuple[ExploreApproachDefinition, ...],
 ) -> discord.Embed:
     location = player.location_data
     location_exploration = get_location_exploration_definition(player.location)
@@ -38,14 +37,6 @@ def build_explore_menu_embed(
             f"Location: **{location.name}**\n"
             f"Stamina: **{player.stamina_current}/{player.stamina_max}**\n"
             f"Level: **{player.level}**"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Openings Right Now",
-        value="\n".join(
-            f"**{approach.dropdown_label}**\n{approach.menu_description}"
-            for approach in approaches
         ),
         inline=False,
     )

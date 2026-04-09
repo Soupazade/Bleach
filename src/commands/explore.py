@@ -74,6 +74,6 @@ def register_explore_command(bot: "BleachBot") -> None:
 
         approaches = get_random_explore_options_for_location(player.location)
         view = ExploreView(bot=bot, owner_id=interaction.user.id, player=player, approaches=approaches)
-        embed = build_explore_menu_embed(player, approaches)
+        embed = build_explore_menu_embed(player)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()
