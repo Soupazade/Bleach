@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from src.commands import register_commands
 from src.database import create_pool, ensure_schema
 from src.services.exploration_service import restore_exploration_tasks
+from src.ui.exploration_choice_view import ExplorationChoiceView
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -51,6 +52,7 @@ class BleachBot(discord.Client):
     async def setup_hook(self) -> None:
         self.db_pool = await create_pool()
         await ensure_schema(self.db_pool)
+        self.add_view(ExplorationChoiceView(self))
         await restore_exploration_tasks(self)
 
         if self.guild_id is not None:

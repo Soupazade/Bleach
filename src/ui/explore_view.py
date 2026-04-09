@@ -210,9 +210,30 @@ class ExploreView(discord.ui.View):
 
             await interaction.response.edit_message(
                 embed=discord.Embed(
-                    title="Previous Patrol Resolved",
-                    description="Your previous exploration had already ended. I posted the result in the channel.",
+                    title="Previous Run Posted",
+                    description=(
+                        "Your previous exploration had already ended. I posted the result in the channel."
+                        if resolution.status == "instant"
+                        else "Your previous exploration had already ended. I posted a street decision in the channel."
+                    ),
                     color=discord.Color.green(),
+                ),
+                view=None,
+            )
+            return
+
+        if result.status == "pending_choice" and result.pending_choice is not None:
+            self.stop()
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="Street Decision Waiting",
+                    description=(
+                        "You still have an unresolved exploration decision waiting in the channel.\n"
+                        f"Decision: **{result.pending_choice.event_title}**\n"
+                        f"Step: **{result.pending_choice.step_number}/{result.pending_choice.total_steps}**\n"
+                        f"Channel: <#{result.pending_choice.session.channel_id}>"
+                    ),
+                    color=discord.Color.orange(),
                 ),
                 view=None,
             )

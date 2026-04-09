@@ -64,6 +64,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
     location = profile.location_data
     trait = profile.trait_data
     active_exploration = debug_state.active_exploration
+    pending_choice = debug_state.pending_choice
 
     embed = discord.Embed(
         title="Player State",
@@ -119,9 +120,9 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
         inline=False,
     )
 
-    if active_exploration is None:
-        exploration_value = "No active exploration."
-    else:
+    if active_exploration is None and pending_choice is None:
+        exploration_value = "No active exploration or pending street decision."
+    elif active_exploration is not None:
         approach = get_explore_approach(active_exploration.approach)
         exploration_value = (
             f"Approach: **{approach.name}**\n"
@@ -130,6 +131,15 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
             f"End: **{discord.utils.format_dt(active_exploration.end_time, 'R')}**\n"
             f"Remaining: **{get_exploration_remaining_time(active_exploration)}**\n"
             f"Task Tracked: **{'Yes' if active_exploration.user_id in bot.exploration_tasks else 'No'}**"
+        )
+    else:
+        approach = get_explore_approach(pending_choice.approach)
+        exploration_value = (
+            f"Approach: **{approach.name}**\n"
+            f"Pending Decision: **{pending_choice.event_key.replace('_', ' ').title()}**\n"
+            f"Step: **{pending_choice.current_step}**\n"
+            f"Channel: <#{pending_choice.channel_id}>\n"
+            f"Message: **{pending_choice.message_id or 'Not posted'}**"
         )
     embed.add_field(name="Exploration", value=exploration_value, inline=False)
     return embed
@@ -389,6 +399,11 @@ def register_staff_commands(bot: "BleachBot") -> None:
             inline=True,
         )
         embed.add_field(
+            name="Decision Cleared",
+            value="Yes" if result.cleared_choice else "No",
+            inline=True,
+        )
+        embed.add_field(
             name="Rest Cleared",
             value="Yes" if result.cleared_resting else "No",
             inline=True,
@@ -474,8 +489,12 @@ def register_staff_commands(bot: "BleachBot") -> None:
             color=discord.Color.orange(),
         )
         embed.add_field(name="Task Cancelled", value="Yes" if cancelled_task else "No tracked task", inline=True)
-        embed.add_field(name="Outcome", value=f"**{resolution.title}**", inline=True)
-        embed.add_field(name="XP Gained", value=f"**{resolution.xp_gained}**", inline=True)
+        if resolution.status == "instant" and resolution.resolution is not None:
+            embed.add_field(name="Outcome", value=f"**{resolution.resolution.title}**", inline=True)
+            embed.add_field(name="XP Gained", value=f"**{resolution.resolution.xp_gained}**", inline=True)
+        elif resolution.prompt is not None:
+            embed.add_field(name="Outcome", value="**Street Decision Posted**", inline=True)
+            embed.add_field(name="Step", value=f"**{resolution.prompt.step_number}/{resolution.prompt.total_steps}**", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="playerstate", description="Show a compact admin debug sheet for a player.")

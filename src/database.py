@@ -44,6 +44,24 @@ CREATE TABLE IF NOT EXISTS active_explorations (
 );
 """
 
+CREATE_ACTIVE_EXPLORATION_CHOICES_TABLE = """
+CREATE TABLE IF NOT EXISTS active_exploration_choices (
+    user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT,
+    location TEXT NOT NULL,
+    approach TEXT NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    event_key TEXT NOT NULL,
+    event_flow TEXT NOT NULL,
+    current_step TEXT NOT NULL,
+    choice_history TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
 PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS user_id BIGINT",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS race TEXT NOT NULL DEFAULT 'Soul'",
@@ -78,6 +96,12 @@ ON player_profiles (user_id);
 CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_active_explorations_end_time
 ON active_explorations (end_time);
+"""
+
+CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_exploration_choices_message_id
+ON active_exploration_choices (message_id)
+WHERE message_id IS NOT NULL;
 """
 
 
@@ -181,3 +205,5 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_PLAYER_PROFILE_USER_ID_INDEX)
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_TABLE)
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX)
+        await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_TABLE)
+        await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX)

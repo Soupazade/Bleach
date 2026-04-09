@@ -7,12 +7,15 @@ from asyncpg import Pool
 
 from src.data.locations import get_location_definition
 from src.data.traits import get_trait_definition
-from src.models.exploration import ActiveExploration
+from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
 from src.services.exploration_service import (
     delete_active_exploration,
+    delete_pending_choice,
     fetch_active_exploration_record,
+    fetch_pending_choice_record,
     get_active_exploration,
+    get_pending_exploration_choice,
 )
 from src.services.formulas import apply_experience_gain
 from src.services.player_service import (
@@ -27,6 +30,7 @@ from src.services.player_service import (
 class CooldownResetResult:
     player: PlayerProfile
     cleared_exploration: bool
+    cleared_choice: bool
     cleared_resting: bool
 
 
@@ -34,6 +38,7 @@ class CooldownResetResult:
 class PlayerDebugState:
     player: PlayerProfile
     active_exploration: ActiveExploration | None
+    pending_choice: PendingExplorationChoice | None
     rest_minutes: int
     projected_rest_recovery: int
 
@@ -259,6 +264,11 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
             if cleared_exploration:
                 await delete_active_exploration(connection, user_id)
 
+            pending_choice_record = await fetch_pending_choice_record(connection, user_id, for_update=True)
+            cleared_choice = pending_choice_record is not None
+            if cleared_choice:
+                await delete_pending_choice(connection, user_id)
+
             cleared_resting = bool(record["is_resting"])
             updated_record = record
             if cleared_resting:
@@ -276,6 +286,7 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
     return CooldownResetResult(
         player=PlayerProfile.from_record(updated_record),
         cleared_exploration=cleared_exploration,
+        cleared_choice=cleared_choice,
         cleared_resting=cleared_resting,
     )
 
@@ -289,10 +300,12 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
         return None
 
     active_exploration = await get_active_exploration(pool, user_id)
+    pending_choice = await get_pending_exploration_choice(pool, user_id)
     rest_minutes, projected_rest_recovery = get_rest_status(player)
     return PlayerDebugState(
         player=player,
         active_exploration=active_exploration,
+        pending_choice=pending_choice,
         rest_minutes=rest_minutes,
         projected_rest_recovery=projected_rest_recovery,
     )

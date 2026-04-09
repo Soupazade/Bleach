@@ -7,7 +7,11 @@ import discord
 from discord import app_commands
 
 from src.data.exploration import get_random_explore_options_for_location
-from src.services.exploration_service import get_active_exploration, resolve_and_post_exploration
+from src.services.exploration_service import (
+    get_active_exploration,
+    get_pending_exploration_prompt,
+    resolve_and_post_exploration,
+)
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
 from src.ui.explore_view import ExploreView, build_explore_active_embed, build_explore_menu_embed
 
@@ -44,6 +48,21 @@ def register_explore_command(bot: "BleachBot") -> None:
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
+        pending_prompt = await get_pending_exploration_prompt(bot.db_pool, interaction.user.id)
+        if pending_prompt is not None:
+            embed = discord.Embed(
+                title="Street Decision Waiting",
+                description=(
+                    "You still have an unresolved exploration decision waiting in the channel.\n"
+                    f"Decision: **{pending_prompt.event_title}**\n"
+                    f"Step: **{pending_prompt.step_number}/{pending_prompt.total_steps}**\n"
+                    f"Channel: <#{pending_prompt.session.channel_id}>"
+                ),
+                color=discord.Color.orange(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
         active_exploration = await get_active_exploration(bot.db_pool, interaction.user.id)
         now = datetime.now(timezone.utc)
         if active_exploration is not None:
@@ -64,8 +83,12 @@ def register_explore_command(bot: "BleachBot") -> None:
 
             await interaction.response.send_message(
                 embed=discord.Embed(
-                    title="Previous Exploration Resolved",
-                    description="Your previous patrol had already finished, so I posted the result in the channel.",
+                    title="Previous Exploration Posted",
+                    description=(
+                        "Your previous exploration had already finished, so I posted the outcome in the channel."
+                        if resolution.status == "instant"
+                        else "Your previous exploration had already finished, so I posted a street decision in the channel."
+                    ),
                     color=discord.Color.green(),
                 ),
                 ephemeral=True,
