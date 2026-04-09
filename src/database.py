@@ -95,8 +95,10 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         )
         column_names = {row["column_name"] for row in existing_columns}
 
-        if "discord_user_id" in column_names and "user_id" not in column_names:
-            await connection.execute("ALTER TABLE player_profiles ADD COLUMN user_id BIGINT")
+        if "discord_user_id" in column_names:
+            if "user_id" not in column_names:
+                await connection.execute("ALTER TABLE player_profiles ADD COLUMN user_id BIGINT")
+
             await connection.execute(
                 """
                 UPDATE player_profiles
@@ -104,6 +106,17 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
                 WHERE user_id IS NULL
                   AND NULLIF(discord_user_id, '') IS NOT NULL
                 """
+            )
+            await connection.execute(
+                """
+                UPDATE player_profiles
+                SET discord_user_id = user_id::TEXT
+                WHERE discord_user_id IS NULL
+                  AND user_id IS NOT NULL
+                """
+            )
+            await connection.execute(
+                "ALTER TABLE player_profiles ALTER COLUMN discord_user_id DROP NOT NULL"
             )
 
         if "experience" in column_names and "xp" not in column_names:
