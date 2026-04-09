@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 
@@ -7,6 +8,7 @@ from dotenv import load_dotenv
 
 from src.commands import register_commands
 from src.database import create_pool, ensure_schema
+from src.services.exploration_service import restore_exploration_tasks
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -32,6 +34,7 @@ class BleachBot(discord.Client):
         self.db_pool = None
         self.guild_id = self._parse_guild_id()
         self.tree = app_commands.CommandTree(self)
+        self.exploration_tasks: dict[int, asyncio.Task] = {}
         register_commands(self)
 
     @staticmethod
@@ -48,6 +51,7 @@ class BleachBot(discord.Client):
     async def setup_hook(self) -> None:
         self.db_pool = await create_pool()
         await ensure_schema(self.db_pool)
+        await restore_exploration_tasks(self)
 
         if self.guild_id is not None:
             guild = discord.Object(id=self.guild_id)
@@ -65,6 +69,10 @@ class BleachBot(discord.Client):
         logging.info("Logged in as %s", self.user)
 
     async def close(self) -> None:
+        for task in self.exploration_tasks.values():
+            task.cancel()
+
+        self.exploration_tasks.clear()
         if self.db_pool is not None:
             await self.db_pool.close()
         await super().close()

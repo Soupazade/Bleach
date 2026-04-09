@@ -24,8 +24,23 @@ CREATE TABLE IF NOT EXISTS player_profiles (
     reiatsu INTEGER NOT NULL DEFAULT 0,
     trait TEXT NOT NULL DEFAULT 'resilient',
     location TEXT NOT NULL DEFAULT 'rukongai_streets',
+    is_resting BOOLEAN NOT NULL DEFAULT FALSE,
+    rest_start_time TIMESTAMPTZ,
+    rest_stamina_snapshot INTEGER,
+    stamina_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+CREATE_ACTIVE_EXPLORATIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS active_explorations (
+    user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    channel_id BIGINT NOT NULL,
+    location TEXT NOT NULL,
+    approach TEXT NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL
 );
 """
 
@@ -47,6 +62,10 @@ PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS reiatsu INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS trait TEXT NOT NULL DEFAULT 'resilient'",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'rukongai_streets'",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS is_resting BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_start_time TIMESTAMPTZ",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_stamina_snapshot INTEGER",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stamina_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
 )
@@ -54,6 +73,11 @@ PLAYER_PROFILE_COLUMN_DEFAULTS = (
 CREATE_PLAYER_PROFILE_USER_ID_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_user_id
 ON player_profiles (user_id);
+"""
+
+CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_active_explorations_end_time
+ON active_explorations (end_time);
 """
 
 
@@ -155,3 +179,5 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
             await connection.execute(statement)
 
         await connection.execute(CREATE_PLAYER_PROFILE_USER_ID_INDEX)
+        await connection.execute(CREATE_ACTIVE_EXPLORATIONS_TABLE)
+        await connection.execute(CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX)

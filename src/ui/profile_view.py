@@ -11,6 +11,7 @@ from src.services.formulas import (
     calculate_effective_speed,
     calculate_effective_stamina_max,
 )
+from src.services.player_service import get_player_profile, get_rest_status
 
 PROFILE_PAGE_OPTIONS = (
     {
@@ -49,6 +50,8 @@ def build_profile_embed(
     trait = player.trait_data
     location = player.location_data
     room_mention = f"<#{location.room_id}>"
+    rest_minutes, recovered_stamina = get_rest_status(player)
+    status_value = "Resting" if player.is_resting else "Available"
 
     embed = discord.Embed(
         title=f"{discord_user.display_name}'s Soul Record",
@@ -86,6 +89,16 @@ def build_profile_embed(
             value=f"Spiritual Pressure: **{player.spiritual_pressure}**",
             inline=False,
         )
+        if player.is_resting:
+            embed.add_field(
+                name="Rest Status",
+                value=(
+                    "Status: **Resting**\n"
+                    f"Resting Since: **{rest_minutes} minute(s) ago**\n"
+                    f"Projected Recovery: **+{recovered_stamina} stamina**"
+                ),
+                inline=False,
+            )
         return embed
 
     if page_key == "formulas":
@@ -216,6 +229,17 @@ def build_profile_embed(
         inline=True,
     )
     embed.add_field(
+        name="Status",
+        value=(
+            f"Status: **{status_value}**\n"
+            f"Resting Since: **{rest_minutes} minute(s) ago**\n"
+            f"Projected Recovery: **+{recovered_stamina} stamina**"
+            if player.is_resting
+            else "Status: **Available**"
+        ),
+        inline=False,
+    )
+    embed.add_field(
         name="Location",
         value=f"**{location.name}**\nRoom: {room_mention}",
         inline=False,
@@ -255,11 +279,13 @@ class ProfilePageSelect(discord.ui.Select["ProfileView"]):
 class ProfileView(discord.ui.View):
     def __init__(
         self,
+        db_pool,
         owner_id: int,
         player: PlayerProfile,
         discord_user: discord.abc.User,
     ) -> None:
         super().__init__(timeout=180)
+        self.db_pool = db_pool
         self.owner_id = owner_id
         self.player = player
         self.discord_user = discord_user
@@ -280,6 +306,10 @@ class ProfileView(discord.ui.View):
         return False
 
     async def change_page(self, interaction: discord.Interaction, page_key: str) -> None:
+        refreshed_player = await get_player_profile(self.db_pool, self.owner_id)
+        if refreshed_player is not None:
+            self.player = refreshed_player
+
         self.page_key = page_key
         self.page_select.set_active(page_key)
         embed = build_profile_embed(self.player, self.discord_user, page_key)

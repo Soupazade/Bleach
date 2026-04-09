@@ -32,6 +32,7 @@ def register_profile_command(bot: "BleachBot") -> None:
             return
 
         view = ProfileView(
+            db_pool=bot.db_pool,
             owner_id=interaction.user.id,
             player=player,
             discord_user=interaction.user,

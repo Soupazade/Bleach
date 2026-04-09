@@ -29,6 +29,10 @@ class PlayerProfile:
     spiritual_pressure: int
     trait: str
     location: str
+    is_resting: bool
+    rest_start_time: datetime | None
+    rest_stamina_snapshot: int | None
+    stamina_updated_at: datetime
     created_at: datetime
 
     @classmethod
@@ -62,6 +66,10 @@ class PlayerProfile:
             ),
             trait=str(record["trait"]),
             location=str(record["location"]),
+            is_resting=bool(record["is_resting"]),
+            rest_start_time=record["rest_start_time"],
+            rest_stamina_snapshot=record["rest_stamina_snapshot"],
+            stamina_updated_at=record["stamina_updated_at"],
             created_at=record["created_at"],
         )
 
