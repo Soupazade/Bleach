@@ -278,6 +278,8 @@ async def start_exploration(
 async def resolve_exploration(
     pool: Pool | None,
     user_id: int,
+    *,
+    force: bool = False,
 ) -> ExplorationResolution | None:
     if pool is None:
         return None
@@ -289,7 +291,7 @@ async def resolve_exploration(
                 return None
 
             exploration = ActiveExploration.from_record(exploration_record)
-            if exploration.end_time > datetime.now(timezone.utc):
+            if exploration.end_time > datetime.now(timezone.utc) and not force:
                 return None
 
             player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
@@ -399,8 +401,13 @@ async def post_exploration_result(bot: "BleachBot", resolution: ExplorationResol
         logging.exception("Failed to send exploration result for user %s.", resolution.exploration.user_id)
 
 
-async def resolve_and_post_exploration(bot: "BleachBot", user_id: int) -> ExplorationResolution | None:
-    resolution = await resolve_exploration(bot.db_pool, user_id)
+async def resolve_and_post_exploration(
+    bot: "BleachBot",
+    user_id: int,
+    *,
+    force: bool = False,
+) -> ExplorationResolution | None:
+    resolution = await resolve_exploration(bot.db_pool, user_id, force=force)
     if resolution is None:
         return None
 

@@ -6,14 +6,21 @@ import discord
 from discord import app_commands
 
 from src.commands.checks import require_staff_rank
+from src.data.exploration import get_explore_approach
 from src.data.locations import LOCATIONS, get_location_definition
+from src.data.traits import SOUL_TRAITS, get_trait_definition
+from src.services.exploration_service import get_exploration_remaining_time, resolve_and_post_exploration
 from src.services.role_service import remove_player_roles, sync_member_location_role
 from src.services.staff_service import (
     delete_player_profile,
     give_player_xp,
+    get_player_debug_state,
     reset_player_action_timers,
+    set_player_level,
     set_player_location,
+    set_player_stat,
     set_player_stamina,
+    set_player_trait,
     set_player_xp,
 )
 
@@ -26,6 +33,22 @@ LOCATION_CHOICES = [
     for location in LOCATIONS.values()
 ]
 
+TRAIT_CHOICES = [
+    app_commands.Choice(name=trait.name, value=trait.key)
+    for trait in SOUL_TRAITS.values()
+]
+
+STAT_CHOICES = [
+    app_commands.Choice(name="Power", value="power"),
+    app_commands.Choice(name="Defense", value="defense"),
+    app_commands.Choice(name="Speed", value="speed"),
+    app_commands.Choice(name="Reiatsu", value="reiatsu"),
+]
+
+FORCE_RESOLVE_CHOICES = [
+    app_commands.Choice(name="Explore", value="explore"),
+]
+
 
 def _cancel_player_exploration_task(bot: "BleachBot", user_id: int) -> bool:
     task = bot.exploration_tasks.pop(user_id, None)
@@ -34,6 +57,82 @@ def _cancel_player_exploration_task(bot: "BleachBot", user_id: int) -> bool:
 
     task.cancel()
     return True
+
+
+def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_state) -> discord.Embed:
+    profile = debug_state.player
+    location = profile.location_data
+    trait = profile.trait_data
+    active_exploration = debug_state.active_exploration
+
+    embed = discord.Embed(
+        title="Player State",
+        description=f"Compact admin debug sheet for {player.mention}.",
+        color=discord.Color.dark_blue(),
+    )
+    embed.add_field(
+        name="Identity",
+        value=(
+            f"Race: **{profile.race}**\n"
+            f"Rank: **{profile.rank}**\n"
+            f"Trait: **{trait.name}**\n"
+            f"Location: **{location.name}**"
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name="Progress",
+        value=(
+            f"Level: **{profile.level}**\n"
+            f"XP: **{profile.xp}**\n"
+            f"Power: **{profile.power}**\n"
+            f"Defense: **{profile.defense}**\n"
+            f"Speed: **{profile.speed}**\n"
+            f"Reiatsu: **{profile.reiatsu}**"
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name="Resources",
+        value=(
+            f"HP: **{profile.hp_current}/{profile.hp_max}**\n"
+            f"Stamina: **{profile.stamina_current}/{profile.stamina_max}**\n"
+            f"Mana: **{profile.mana_current}/{profile.mana_max}**"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Rest",
+        value=(
+            f"Status: **{'Resting' if profile.is_resting else 'Not Resting'}**\n"
+            f"Rest Start: **{discord.utils.format_dt(profile.rest_start_time, 'R')}**\n"
+            f"Rest Minutes: **{debug_state.rest_minutes}**\n"
+            f"Projected Recovery: **+{debug_state.projected_rest_recovery}**\n"
+            f"Rest Snapshot: **{profile.rest_stamina_snapshot}**\n"
+            f"Stamina Updated: **{discord.utils.format_dt(profile.stamina_updated_at, 'R')}**"
+            if profile.is_resting and profile.rest_start_time is not None
+            else (
+                f"Status: **Not Resting**\n"
+                f"Stamina Updated: **{discord.utils.format_dt(profile.stamina_updated_at, 'R')}**"
+            )
+        ),
+        inline=False,
+    )
+
+    if active_exploration is None:
+        exploration_value = "No active exploration."
+    else:
+        approach = get_explore_approach(active_exploration.approach)
+        exploration_value = (
+            f"Approach: **{approach.name}**\n"
+            f"Channel: <#{active_exploration.channel_id}>\n"
+            f"Start: **{discord.utils.format_dt(active_exploration.start_time, 'R')}**\n"
+            f"End: **{discord.utils.format_dt(active_exploration.end_time, 'R')}**\n"
+            f"Remaining: **{get_exploration_remaining_time(active_exploration)}**\n"
+            f"Task Tracked: **{'Yes' if active_exploration.user_id in bot.exploration_tasks else 'No'}**"
+        )
+    embed.add_field(name="Exploration", value=exploration_value, inline=False)
+    return embed
 
 
 def register_staff_commands(bot: "BleachBot") -> None:
@@ -101,6 +200,35 @@ def register_staff_commands(bot: "BleachBot") -> None:
         embed.add_field(name="Levels Gained", value=f"**{levels_gained}**", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @bot.tree.command(name="setlevel", description="Set a player's level directly and reset stored XP to 0.")
+    @app_commands.guild_only()
+    @require_staff_rank("admin")
+    async def setlevel(
+        interaction: discord.Interaction,
+        player: discord.Member,
+        amount: app_commands.Range[int, 1],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        updated_player = await set_player_level(bot.db_pool, player.id, amount)
+        if updated_player is None:
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="Level Set",
+            description=f"{player.mention}'s level has been set directly for testing.",
+            color=discord.Color.purple(),
+        )
+        embed.add_field(name="Level", value=f"**{updated_player.level}**", inline=True)
+        embed.add_field(name="Stored XP", value=f"**{updated_player.xp}**", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @bot.tree.command(name="givexp", description="Give XP to a player and apply any resulting level-ups.")
     @app_commands.guild_only()
     @require_staff_rank("admin")
@@ -157,6 +285,78 @@ def register_staff_commands(bot: "BleachBot") -> None:
         embed.add_field(
             name="Resting",
             value="Yes" if updated_player.is_resting else "No",
+            inline=True,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="settrait", description="Set a player's Soul Trait directly for testing.")
+    @app_commands.guild_only()
+    @require_staff_rank("admin")
+    @app_commands.choices(trait=TRAIT_CHOICES)
+    async def settrait(
+        interaction: discord.Interaction,
+        player: discord.Member,
+        trait: app_commands.Choice[str],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        updated_player = await set_player_trait(bot.db_pool, player.id, trait.value)
+        if updated_player is None:
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+
+        trait_data = get_trait_definition(updated_player.trait)
+        embed = discord.Embed(
+            title="Trait Updated",
+            description=f"{player.mention}'s Soul Trait has been changed.",
+            color=discord.Color.magenta(),
+        )
+        embed.add_field(name="Trait", value=f"**{trait_data.name}**", inline=True)
+        embed.add_field(name="Effect", value=trait_data.effect, inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="setstat", description="Set one of a player's core stats directly.")
+    @app_commands.guild_only()
+    @require_staff_rank("admin")
+    @app_commands.choices(stat=STAT_CHOICES)
+    async def setstat(
+        interaction: discord.Interaction,
+        player: discord.Member,
+        stat: app_commands.Choice[str],
+        amount: app_commands.Range[int, 0],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        updated_player = await set_player_stat(bot.db_pool, player.id, stat.value, amount)
+        if updated_player is None:
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+
+        stat_labels = {
+            "power": updated_player.power,
+            "defense": updated_player.defense,
+            "speed": updated_player.speed,
+            "reiatsu": updated_player.reiatsu,
+        }
+        embed = discord.Embed(
+            title="Stat Updated",
+            description=f"{player.mention}'s **{stat.name}** has been set.",
+            color=discord.Color.teal(),
+        )
+        embed.add_field(name=stat.name, value=f"**{stat_labels[stat.value]}**", inline=True)
+        embed.add_field(
+            name="Spiritual Pressure",
+            value=f"**{updated_player.spiritual_pressure}**",
             inline=True,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -240,4 +440,59 @@ def register_staff_commands(bot: "BleachBot") -> None:
         if role_warning is not None:
             embed.add_field(name="Role Warning", value=role_warning, inline=False)
 
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="forceresolve", description="Force a timed action to resolve immediately for testing.")
+    @app_commands.guild_only()
+    @require_staff_rank("mod")
+    @app_commands.choices(action=FORCE_RESOLVE_CHOICES)
+    async def forceresolve(
+        interaction: discord.Interaction,
+        player: discord.Member,
+        action: app_commands.Choice[str],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        if action.value != "explore":
+            await interaction.response.send_message("That force-resolve action is not supported yet.", ephemeral=True)
+            return
+
+        cancelled_task = _cancel_player_exploration_task(bot, player.id)
+        resolution = await resolve_and_post_exploration(bot, player.id, force=True)
+        if resolution is None:
+            await interaction.response.send_message(
+                f"{player.mention} does not have an active exploration to resolve.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="Exploration Force-Resolved",
+            description=f"{player.mention}'s exploration was resolved immediately and posted to the original channel.",
+            color=discord.Color.orange(),
+        )
+        embed.add_field(name="Task Cancelled", value="Yes" if cancelled_task else "No tracked task", inline=True)
+        embed.add_field(name="Outcome", value=f"**{resolution.title}**", inline=True)
+        embed.add_field(name="XP Gained", value=f"**{resolution.xp_gained}**", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="playerstate", description="Show a compact admin debug sheet for a player.")
+    @app_commands.guild_only()
+    @require_staff_rank("mod")
+    async def playerstate(interaction: discord.Interaction, player: discord.Member) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        debug_state = await get_player_debug_state(bot.db_pool, player.id)
+        if debug_state is None:
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+
+        embed = build_player_state_embed(bot, player, debug_state)
         await interaction.response.send_message(embed=embed, ephemeral=True)

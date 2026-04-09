@@ -6,10 +6,18 @@ from datetime import datetime, timezone
 from asyncpg import Pool
 
 from src.data.locations import get_location_definition
+from src.data.traits import get_trait_definition
+from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
-from src.services.exploration_service import delete_active_exploration, fetch_active_exploration_record
+from src.services.exploration_service import (
+    delete_active_exploration,
+    fetch_active_exploration_record,
+    get_active_exploration,
+)
 from src.services.formulas import apply_experience_gain
 from src.services.player_service import (
+    get_player_profile,
+    get_rest_status,
     get_or_sync_player_record,
     update_player_record,
 )
@@ -20,6 +28,17 @@ class CooldownResetResult:
     player: PlayerProfile
     cleared_exploration: bool
     cleared_resting: bool
+
+
+@dataclass(slots=True)
+class PlayerDebugState:
+    player: PlayerProfile
+    active_exploration: ActiveExploration | None
+    rest_minutes: int
+    projected_rest_recovery: int
+
+
+VALID_STAT_FIELDS = {"power", "defense", "speed", "reiatsu"}
 
 
 async def delete_player_profile(pool: Pool | None, user_id: int) -> bool:
@@ -67,6 +86,30 @@ async def set_player_xp(pool: Pool | None, user_id: int, xp_amount: int) -> tupl
             )
 
     return PlayerProfile.from_record(updated_record), levels_gained
+
+
+async def set_player_level(pool: Pool | None, user_id: int, level_amount: int) -> PlayerProfile | None:
+    if pool is None:
+        return None
+
+    normalized_level = max(1, level_amount)
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None
+
+            updated_record = await update_player_record(
+                connection,
+                user_id,
+                {
+                    "level": normalized_level,
+                    "xp": 0,
+                },
+            )
+
+    return PlayerProfile.from_record(updated_record)
 
 
 async def give_player_xp(pool: Pool | None, user_id: int, xp_amount: int) -> tuple[PlayerProfile | None, int]:
@@ -121,6 +164,58 @@ async def set_player_stamina(pool: Pool | None, user_id: int, stamina_amount: in
                 updates["rest_stamina_snapshot"] = clamped_stamina
 
             updated_record = await update_player_record(connection, user_id, updates)
+
+    return PlayerProfile.from_record(updated_record)
+
+
+async def set_player_trait(pool: Pool | None, user_id: int, trait_key: str) -> PlayerProfile | None:
+    if pool is None:
+        return None
+
+    get_trait_definition(trait_key)
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None
+
+            updated_record = await update_player_record(
+                connection,
+                user_id,
+                {
+                    "trait": trait_key,
+                },
+            )
+
+    return PlayerProfile.from_record(updated_record)
+
+
+async def set_player_stat(
+    pool: Pool | None,
+    user_id: int,
+    stat_name: str,
+    stat_amount: int,
+) -> PlayerProfile | None:
+    if pool is None:
+        return None
+
+    if stat_name not in VALID_STAT_FIELDS:
+        raise ValueError(f"Unknown stat field: {stat_name}")
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return None
+
+            updated_record = await update_player_record(
+                connection,
+                user_id,
+                {
+                    stat_name: max(0, stat_amount),
+                },
+            )
 
     return PlayerProfile.from_record(updated_record)
 
@@ -182,4 +277,22 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
         player=PlayerProfile.from_record(updated_record),
         cleared_exploration=cleared_exploration,
         cleared_resting=cleared_resting,
+    )
+
+
+async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebugState | None:
+    if pool is None:
+        return None
+
+    player = await get_player_profile(pool, user_id)
+    if player is None:
+        return None
+
+    active_exploration = await get_active_exploration(pool, user_id)
+    rest_minutes, projected_rest_recovery = get_rest_status(player)
+    return PlayerDebugState(
+        player=player,
+        active_exploration=active_exploration,
+        rest_minutes=rest_minutes,
+        projected_rest_recovery=projected_rest_recovery,
     )
