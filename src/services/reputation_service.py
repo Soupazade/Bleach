@@ -36,10 +36,10 @@ REPUTATION_MODIFIER_RANGES = (
         -81,
         {
             "title": "Hated",
-            "xp_modifier": -8,
+            "xp_modifier": -10,
             "stamina_cost_modifier": 2,
-            "shop_price_modifier": 8,
-            "training_time_modifier": 8,
+            "shop_price_modifier": 10,
+            "training_time_modifier": 10,
         },
     ),
     (
@@ -124,10 +124,10 @@ REPUTATION_MODIFIER_RANGES = (
         100,
         {
             "title": "Admired",
-            "xp_modifier": 8,
+            "xp_modifier": 10,
             "stamina_cost_modifier": -2,
-            "shop_price_modifier": -8,
-            "training_time_modifier": -8,
+            "shop_price_modifier": -10,
+            "training_time_modifier": -10,
         },
     ),
 )
