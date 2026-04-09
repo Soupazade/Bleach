@@ -40,11 +40,6 @@ def build_explore_menu_embed(
         ),
         inline=False,
     )
-    embed.add_field(
-        name="Cost",
-        value="Starting an exploration costs **10 stamina**. The timer itself is the pacing system.",
-        inline=False,
-    )
     embed.set_footer(text=location_exploration.menu_footer)
     return embed
 
