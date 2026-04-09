@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 from src.data.traits import TraitDefinition
 
+RUKONGAI_EARLY_GAME_LEVEL_CAP = 10
+RUKONGAI_XP_PER_LEVEL = 15
+
 
 def calculate_spiritual_pressure(
     power: int,
@@ -70,7 +73,9 @@ def calculate_passive_stamina_recovery(
 
 
 def get_xp_required_for_level(level: int) -> int:
-    return max(1, level) * 20
+    # Rukongai is tuned as the early-game zone for roughly levels 1-10, so the
+    # opening curve stays intentionally quick and rewarding before later regions scale up.
+    return max(1, level) * RUKONGAI_XP_PER_LEVEL
 
 
 def apply_experience_gain(

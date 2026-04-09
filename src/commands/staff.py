@@ -10,6 +10,7 @@ from src.data.exploration import get_explore_approach
 from src.data.locations import LOCATIONS, get_location_definition
 from src.data.traits import SOUL_TRAITS, get_trait_definition
 from src.services.exploration_service import get_exploration_remaining_time, resolve_and_post_exploration
+from src.services.formulas import get_xp_required_for_level
 from src.services.role_service import remove_player_roles, sync_member_location_role
 from src.services.staff_service import (
     delete_player_profile,
@@ -229,7 +230,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             )
             return
 
-        xp_to_next = updated_player.level * 20
+        xp_to_next = get_xp_required_for_level(updated_player.level)
         embed = discord.Embed(
             title="XP Set",
             description=f"{player.mention}'s XP progress has been updated.",
@@ -285,7 +286,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             )
             return
 
-        xp_to_next = updated_player.level * 20
+        xp_to_next = get_xp_required_for_level(updated_player.level)
         embed = discord.Embed(
             title="XP Granted",
             description=f"{player.mention} gains **{amount} XP**.",
