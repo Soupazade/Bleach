@@ -55,6 +55,21 @@ def _format_training_current_totals(player: PlayerProfile) -> str:
     )
 
 
+def _format_duration_option_description(
+    focus_key: str,
+    duration_minutes: int,
+) -> str:
+    reward = get_training_full_reward(focus_key, duration_minutes)
+    if focus_key == ALL_STATS_KEY:
+        reward_text = "+1 all stats"
+    else:
+        stat_name, stat_gain = next(iter(reward.items()))
+        reward_text = f"+{stat_gain} {get_training_focus_label(stat_name)}"
+
+    duration = get_training_duration(duration_minutes)
+    return f"Gain: {reward_text} | Cost: {duration.stamina_cost}"
+
+
 def build_training_menu_embed(
     player: PlayerProfile,
     *,
@@ -387,7 +402,10 @@ class TrainingDurationSelect(discord.ui.Select["TrainingSetupView"]):
             discord.SelectOption(
                 label=f"{duration.minutes} minutes",
                 value=str(duration.minutes),
-                description=f"Stamina Cost: {duration.stamina_cost}",
+                description=_format_duration_option_description(
+                    focus_key,
+                    duration.minutes,
+                ),
             )
             for duration in get_training_duration_options(focus_key)
         ]
