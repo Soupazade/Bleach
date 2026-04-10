@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import discord
 
+from src.models.effects import PlayerEffect
 from src.models.player import PlayerProfile
+from src.services.effect_service import list_active_player_effects, summarize_active_effects
 from src.services.formulas import (
     calculate_effective_damage_power,
     calculate_effective_defense,
@@ -133,6 +135,17 @@ def _add_status_field(embed: discord.Embed, player: PlayerProfile) -> None:
         )
 
 
+def _add_active_effects_field(embed: discord.Embed, active_effects: list[PlayerEffect]) -> None:
+    if not active_effects:
+        return
+
+    embed.add_field(
+        name="Status Effect",
+        value="\n".join(summarize_active_effects(active_effects)),
+        inline=False,
+    )
+
+
 def build_profile_missing_embed() -> discord.Embed:
     embed = discord.Embed(
         title="📘 No Soul Record Found",
@@ -159,6 +172,8 @@ def build_profile_embed(
     player: PlayerProfile,
     discord_user: discord.abc.User,
     page_key: str,
+    *,
+    active_effects: list[PlayerEffect] | None = None,
 ) -> discord.Embed:
     trait = player.trait_data
     location = player.location_data
@@ -241,6 +256,7 @@ def build_profile_embed(
             inline=False,
         )
         _add_status_field(embed, player)
+        _add_active_effects_field(embed, active_effects or [])
         return embed
 
     if page_key == "formulas":
@@ -340,6 +356,7 @@ def build_profile_embed(
             inline=False,
         )
         _add_status_field(embed, player)
+        _add_active_effects_field(embed, active_effects or [])
         return embed
 
     if page_key == "progression":
@@ -383,6 +400,7 @@ def build_profile_embed(
             inline=False,
         )
         _add_status_field(embed, player)
+        _add_active_effects_field(embed, active_effects or [])
         return embed
 
     embed = _build_profile_embed_shell(
@@ -447,6 +465,7 @@ def build_profile_embed(
             ),
             inline=False,
         )
+    _add_active_effects_field(embed, active_effects or [])
     return embed
 
 
@@ -477,6 +496,7 @@ class ProfileView(discord.ui.View):
         owner_id: int,
         player: PlayerProfile,
         discord_user: discord.abc.User,
+        active_effects: list[PlayerEffect],
         *,
         initial_page: str = "overview",
     ) -> None:
@@ -485,6 +505,7 @@ class ProfileView(discord.ui.View):
         self.owner_id = owner_id
         self.player = player
         self.discord_user = discord_user
+        self.active_effects = active_effects
         self.message: discord.Message | None = None
         self.page_key = initial_page
         self.page_select = ProfilePageSelect()
@@ -506,9 +527,16 @@ class ProfileView(discord.ui.View):
         if refreshed_player is not None:
             self.player = refreshed_player
 
+        self.active_effects = await list_active_player_effects(self.db_pool, self.owner_id)
+
         self.page_key = page_key
         self.page_select.set_active(page_key)
-        embed = build_profile_embed(self.player, self.discord_user, page_key)
+        embed = build_profile_embed(
+            self.player,
+            self.discord_user,
+            page_key,
+            active_effects=self.active_effects,
+        )
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def on_timeout(self) -> None:

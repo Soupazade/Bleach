@@ -16,6 +16,11 @@ from src.data.game_constants import (
     STARTING_STAMINA,
     STARTING_XP,
 )
+from src.services.effect_service import (
+    apply_stamina_regen_modifier,
+    get_stamina_regen_modifier_pct,
+    list_active_player_effects_for_connection,
+)
 from src.data.traits import roll_random_soul_trait
 from src.models.player import PlayerProfile
 from src.services.formulas import (
@@ -237,6 +242,14 @@ async def sync_player_record(
                 current_stamina=stamina_current,
                 stamina_max=stamina_max,
                 elapsed_minutes=elapsed_minutes,
+            )
+            active_effects = await list_active_player_effects_for_connection(
+                connection,
+                int(record["user_id"]),
+            )
+            passive_stamina_gained = apply_stamina_regen_modifier(
+                passive_stamina_gained,
+                get_stamina_regen_modifier_pct(active_effects),
             )
             new_stamina = min(stamina_max, stamina_current + passive_stamina_gained)
             if new_stamina != stamina_current:

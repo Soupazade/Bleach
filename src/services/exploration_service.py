@@ -11,6 +11,7 @@ import discord
 from asyncpg import Connection, Pool, Record
 
 from src.data.combat import get_enemy_for_exploration_combat
+from src.data.effects import get_exploration_effect_template
 from src.data.exploration import (
     ExploreApproachDefinition,
     ExploreEventType,
@@ -28,6 +29,7 @@ from src.data.exploration import (
 from src.data.locations import get_location_definition
 from src.data.npcs import get_npc_definition
 from src.models.combat import ActiveExplorationCombat
+from src.models.effects import PlayerEffect
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
 from src.services.combat_service import (
@@ -39,6 +41,13 @@ from src.services.combat_service import (
     fetch_active_combat_record_by_message,
     get_active_exploration_combat,
     update_active_exploration_combat,
+)
+from src.services.effect_service import (
+    apply_explore_xp_effects,
+    build_effective_combat_snapshot,
+    describe_effect_for_embed,
+    grant_player_effect,
+    list_active_player_effects_for_connection,
 )
 from src.services.formulas import apply_experience_gain, format_remaining_duration
 from src.services.npc_service import (
@@ -172,6 +181,15 @@ class ExplorationResolution:
     reputation_xp_modifier_pct: int = 0
     reputation_change: int = 0
     combat_outcome: str | None = None
+    explore_xp_effect_text: str | None = None
+    applied_effect: "AppliedExploreEffect | None" = None
+
+
+@dataclass(slots=True)
+class AppliedExploreEffect:
+    title: str
+    description: str
+    summary_text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -731,6 +749,68 @@ def _apply_location_stamina_cost_modifier(
     return adjusted_cost, adjusted_cost - base_cost
 
 
+async def _apply_explore_xp_bonus(
+    connection: Connection,
+    user_id: int,
+    base_xp: int,
+) -> tuple[int, str | None]:
+    xp_boost = await apply_explore_xp_effects(connection, user_id, base_xp)
+    return xp_boost.adjusted_xp, xp_boost.summary_text
+
+
+async def _apply_explore_bonus_effect(
+    connection: Connection,
+    player: PlayerProfile,
+    *,
+    event_type: Literal["reward", "combat", "choice", "flavor"],
+    combat_outcome: str | None,
+    reputation_change: int,
+) -> tuple[PlayerProfile, AppliedExploreEffect | None]:
+    template = get_exploration_effect_template(
+        event_type=event_type,
+        combat_outcome=combat_outcome,
+        reputation_change=reputation_change,
+    )
+    if template is None:
+        return player, None
+
+    if template.effect_type == "stamina_flat":
+        updated_stamina = max(
+            0,
+            min(player.stamina_max, player.stamina_current + template.magnitude),
+        )
+        updated_record = await update_player_record(
+            connection,
+            player.user_id,
+            {"stamina_current": updated_stamina},
+        )
+        updated_player = PlayerProfile.from_record(updated_record)
+        delta_applied = updated_player.stamina_current - player.stamina_current
+        summary = (
+            f"{template.title} — "
+            f"{delta_applied:+d} stamina"
+            if delta_applied != 0
+            else f"{template.title} — no stamina change"
+        )
+        return updated_player, AppliedExploreEffect(
+            title=template.title,
+            description=template.description,
+            summary_text=summary,
+        )
+
+    granted_effect = await grant_player_effect(
+        connection,
+        player.user_id,
+        template,
+        source_text="Rukongai Streets",
+    )
+    return player, AppliedExploreEffect(
+        title=granted_effect.title,
+        description=granted_effect.description,
+        summary_text=describe_effect_for_embed(granted_effect),
+    )
+
+
 def _get_instant_reputation_change(
     event_type: Literal["reward", "combat", "choice", "flavor"],
     combat_outcome: str | None,
@@ -798,6 +878,60 @@ def _build_resolution_from_pending_base(
     )
 
 
+async def _finalize_non_combat_resolution(
+    connection: Connection,
+    *,
+    user_id: int,
+    exploration: ActiveExploration,
+    event_type: Literal["reward", "choice", "flavor"],
+    title: str,
+    description: str,
+    base_xp: int,
+    reputation_change: int = 0,
+    combat_outcome: str | None = None,
+) -> ExplorationResolution:
+    current_player = await _get_current_player(connection, user_id)
+    adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(
+        current_player,
+        exploration.location,
+        base_xp,
+    )
+    final_xp, xp_effect_text = await _apply_explore_xp_bonus(
+        connection,
+        user_id,
+        adjusted_xp,
+    )
+    player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+        connection,
+        user_id,
+        location_key=exploration.location,
+        xp_gained=final_xp,
+        reputation_change=reputation_change,
+    )
+    player, applied_effect = await _apply_explore_bonus_effect(
+        connection,
+        player,
+        event_type=event_type,
+        combat_outcome=combat_outcome,
+        reputation_change=applied_reputation_change,
+    )
+    return ExplorationResolution(
+        exploration=exploration,
+        player=player,
+        event_type=event_type,
+        title=title,
+        description=description,
+        xp_gained=final_xp,
+        levels_gained=levels_gained,
+        base_xp=base_xp,
+        reputation_xp_modifier_pct=xp_modifier_pct,
+        reputation_change=applied_reputation_change,
+        combat_outcome=combat_outcome,
+        explore_xp_effect_text=xp_effect_text,
+        applied_effect=applied_effect,
+    )
+
+
 def _get_combat_lose_profile(xp_profile: str) -> Literal["combat_lose", "special_combat_lose"]:
     return "special_combat_lose" if xp_profile == "special_combat_win" else "combat_lose"
 
@@ -817,10 +951,13 @@ async def _start_instant_combat(
         encounter_title=event.title,
         approach_risk=approach.risk_tier,
     )
+    active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
+    combat_snapshot = build_effective_combat_snapshot(player, active_effects)
     return await create_active_exploration_combat(
         connection,
         exploration=exploration,
         player=player,
+        combat_snapshot=combat_snapshot,
         encounter_title=event.title,
         encounter_description=encounter_description,
         resolution_title=event.title,
@@ -861,10 +998,13 @@ async def _start_decision_combat(
         encounter_title=event_title,
         approach_risk=approach.risk_tier,
     )
+    active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
+    combat_snapshot = build_effective_combat_snapshot(player, active_effects)
     return await create_active_exploration_combat(
         connection,
         exploration=exploration,
         player=player,
+        combat_snapshot=combat_snapshot,
         encounter_title=encounter_title,
         encounter_description=encounter_description,
         resolution_title=resolution_title,
@@ -882,18 +1022,27 @@ async def _finalize_combat_resolution(
     *,
     combat: ActiveExplorationCombat,
     base_xp: int,
-    xp_gained: int,
-    reputation_xp_modifier_pct: int,
     combat_outcome: str,
     title: str,
     description: str,
     reputation_change: int,
 ) -> ExplorationResolution:
+    current_player = await _get_current_player(connection, combat.user_id)
+    adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(
+        current_player,
+        combat.location,
+        base_xp,
+    )
+    final_xp, xp_effect_text = await _apply_explore_xp_bonus(
+        connection,
+        combat.user_id,
+        adjusted_xp,
+    )
     player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
         connection,
         combat.user_id,
         location_key=combat.location,
-        xp_gained=xp_gained,
+        xp_gained=final_xp,
         reputation_change=reputation_change,
     )
 
@@ -911,6 +1060,13 @@ async def _finalize_combat_resolution(
         player_updates["setback_at"] = datetime.now(timezone.utc)
     updated_player_record = await update_player_record(connection, combat.user_id, player_updates)
     updated_player = PlayerProfile.from_record(updated_player_record)
+    updated_player, applied_effect = await _apply_explore_bonus_effect(
+        connection,
+        updated_player,
+        event_type="combat",
+        combat_outcome=combat_outcome,
+        reputation_change=applied_reputation_change,
+    )
     await delete_active_exploration_combat(connection, combat.user_id)
     return ExplorationResolution(
         exploration=combat.to_active_exploration(),
@@ -918,12 +1074,14 @@ async def _finalize_combat_resolution(
         event_type="combat",
         title=title,
         description=description,
-        xp_gained=xp_gained,
+        xp_gained=final_xp,
         levels_gained=levels_gained,
         base_xp=base_xp,
-        reputation_xp_modifier_pct=reputation_xp_modifier_pct,
+        reputation_xp_modifier_pct=xp_modifier_pct,
         reputation_change=applied_reputation_change,
         combat_outcome=combat_outcome,
+        explore_xp_effect_text=xp_effect_text,
+        applied_effect=applied_effect,
     )
 
 
@@ -1240,11 +1398,6 @@ async def resolve_exploration(
                     title, description, base_xp = _resolve_flavor_event(exploration)
                     combat_outcome = None
 
-                adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(
-                    current_player,
-                    exploration.location,
-                    base_xp,
-                )
                 reputation_change = _get_instant_reputation_change(event_type, combat_outcome)
                 base_resolution = ExplorationResolution(
                     exploration=exploration,
@@ -1252,10 +1405,10 @@ async def resolve_exploration(
                     event_type=event_type,
                     title=title,
                     description=description,
-                    xp_gained=adjusted_xp,
+                    xp_gained=base_xp,
                     levels_gained=0,
                     base_xp=base_xp,
-                    reputation_xp_modifier_pct=xp_modifier_pct,
+                    reputation_xp_modifier_pct=0,
                     reputation_change=reputation_change,
                     combat_outcome=combat_outcome,
                 )
@@ -1264,27 +1417,18 @@ async def resolve_exploration(
                     prompt = await _create_special_offer(connection, base_resolution, message_id=None)
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
 
-                player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+                resolution = await _finalize_non_combat_resolution(
                     connection,
-                    user_id,
-                    location_key=exploration.location,
-                    xp_gained=adjusted_xp,
-                    reputation_change=reputation_change,
-                )
-                await _close_active_exploration(connection, exploration)
-                resolution = ExplorationResolution(
+                    user_id=user_id,
                     exploration=exploration,
-                    player=player,
                     event_type=event_type,
                     title=title,
                     description=description,
-                    xp_gained=adjusted_xp,
-                    levels_gained=levels_gained,
                     base_xp=base_xp,
-                    reputation_xp_modifier_pct=xp_modifier_pct,
-                    reputation_change=applied_reputation_change,
+                    reputation_change=reputation_change,
                     combat_outcome=combat_outcome,
                 )
+                await _close_active_exploration(connection, exploration)
                 return ExplorationPostResult(
                     status="instant",
                     resolution=resolution,
@@ -1363,13 +1507,16 @@ async def advance_exploration_choice(
                     await delete_pending_choice(connection, user_id)
                     return ExplorationChoiceAdvanceResult(status="combat", combat=combat)
 
-                adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(current_player, session.location, outcome.xp_reward)
-                player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+                resolution = await _finalize_non_combat_resolution(
                     connection,
-                    user_id,
-                    location_key=session.location,
-                    xp_gained=adjusted_xp,
+                    user_id=user_id,
+                    exploration=session.to_active_exploration(),
+                    event_type=outcome.event_type,  # type: ignore[arg-type]
+                    title=outcome.title,
+                    description=outcome.description,
+                    base_xp=outcome.xp_reward,
                     reputation_change=outcome.reputation_change,
+                    combat_outcome=outcome.combat_outcome,
                 )
                 await upsert_player_npc_progress(
                     connection,
@@ -1380,19 +1527,6 @@ async def advance_exploration_choice(
                     last_encounter_at=datetime.now(timezone.utc),
                 )
                 await delete_pending_choice(connection, user_id)
-                resolution = ExplorationResolution(
-                    exploration=session.to_active_exploration(),
-                    player=player,
-                    event_type=outcome.event_type,  # type: ignore[arg-type]
-                    title=outcome.title,
-                    description=outcome.description,
-                    xp_gained=adjusted_xp,
-                    levels_gained=levels_gained,
-                    base_xp=outcome.xp_reward,
-                    reputation_xp_modifier_pct=xp_modifier_pct,
-                    reputation_change=applied_reputation_change,
-                    combat_outcome=outcome.combat_outcome,
-                )
                 return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
 
             if session.session_kind == "special_offer":
@@ -1405,19 +1539,17 @@ async def advance_exploration_choice(
                     if session.base_xp is None:
                         return ExplorationChoiceAdvanceResult(status="missing")
 
-                    adjusted_xp, _ = _apply_location_xp_modifier(
-                        player,
-                        session.location,
-                        session.base_xp,
-                    )
-                    player, levels_gained, _ = await _apply_progression_and_reputation(
+                    resolution = await _finalize_non_combat_resolution(
                         connection,
-                        user_id,
-                        location_key=session.location,
-                        xp_gained=adjusted_xp,
+                        user_id=user_id,
+                        exploration=session.to_active_exploration(),
+                        event_type=session.base_event_type or "reward",  # type: ignore[arg-type]
+                        title=session.base_title or "Street Result",
+                        description=session.base_description or "The district gives you the original outcome and lets the rest pass.",
+                        base_xp=session.base_xp,
                         reputation_change=session.base_rep_change or 0,
+                        combat_outcome=session.base_combat_outcome,
                     )
-                    resolution = _build_resolution_from_pending_base(session, player, levels_gained)
                     await delete_pending_choice(connection, user_id)
                     return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
 
@@ -1498,11 +1630,6 @@ async def advance_exploration_choice(
             approach = get_explore_approach(session.approach)
             outcome = selected_option.outcome
             base_xp = _resolve_outcome_xp(approach, outcome.xp_profile)
-            adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(
-                current_player,
-                session.location,
-                base_xp,
-            )
 
             formatted_step_description = _format_text(
                 step.description,
@@ -1540,10 +1667,10 @@ async def advance_exploration_choice(
                 event_type=outcome.event_type,
                 title=outcome.title,
                 description=formatted_outcome_description,
-                xp_gained=adjusted_xp,
+                xp_gained=base_xp,
                 levels_gained=0,
                 base_xp=base_xp,
-                reputation_xp_modifier_pct=xp_modifier_pct,
+                reputation_xp_modifier_pct=0,
                 reputation_change=outcome.reputation_change,
                 combat_outcome=outcome.combat_outcome,
             )
@@ -1556,27 +1683,18 @@ async def advance_exploration_choice(
                 )
                 return ExplorationChoiceAdvanceResult(status="advanced", prompt=prompt)
 
-            player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+            resolution = await _finalize_non_combat_resolution(
                 connection,
-                user_id,
-                location_key=session.location,
-                xp_gained=adjusted_xp,
-                reputation_change=outcome.reputation_change,
-            )
-            await delete_pending_choice(connection, user_id)
-            resolution = ExplorationResolution(
+                user_id=user_id,
                 exploration=session.to_active_exploration(),
-                player=player,
                 event_type=outcome.event_type,
                 title=outcome.title,
                 description=formatted_outcome_description,
-                xp_gained=adjusted_xp,
-                levels_gained=levels_gained,
                 base_xp=base_xp,
-                reputation_xp_modifier_pct=xp_modifier_pct,
-                reputation_change=applied_reputation_change,
+                reputation_change=outcome.reputation_change,
                 combat_outcome=outcome.combat_outcome,
             )
+            await delete_pending_choice(connection, user_id)
             return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
 
 
@@ -1622,12 +1740,6 @@ async def advance_exploration_combat(
 
             outcome = combat_step.outcome
             base_xp = outcome.xp_reward
-            current_player = await _get_current_player(connection, user_id)
-            adjusted_xp, xp_modifier_pct = _apply_location_xp_modifier(
-                current_player,
-                combat.location,
-                base_xp,
-            )
             resolved_combat = await update_active_exploration_combat(
                 connection,
                 user_id,
@@ -1645,8 +1757,6 @@ async def advance_exploration_combat(
                 connection,
                 combat=resolved_combat,
                 base_xp=base_xp,
-                xp_gained=adjusted_xp,
-                reputation_xp_modifier_pct=xp_modifier_pct,
                 combat_outcome=outcome.combat_outcome,
                 title=outcome.title,
                 description=outcome.description,
@@ -1703,7 +1813,8 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
             "🎯 XP Gained: **"
             + str(resolution.xp_gained)
             + "**"
-            + (f" {xp_modifier_text}" if xp_modifier_text is not None else ""),
+            + (f" {xp_modifier_text}" if xp_modifier_text is not None else "")
+            + (f" {resolution.explore_xp_effect_text}" if resolution.explore_xp_effect_text is not None else ""),
             f"📈 Level: **{resolution.player.level}**",
             f"📈 XP Progress: **{resolution.player.xp}**",
             f"🎭 Shift This Run: {format_reputation_change_text(resolution.reputation_change)}",
@@ -1734,6 +1845,17 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         embed.add_field(
             name="Status Effect",
             value="✨ Minor Setback — a rough outcome is being carried forward for later systems.",
+            inline=False,
+        )
+
+    if resolution.applied_effect is not None:
+        embed.add_field(
+            name="Status Effect",
+            value=build_explore_info_lines(
+                f"✨ {resolution.applied_effect.title}",
+                resolution.applied_effect.description,
+                resolution.applied_effect.summary_text,
+            ),
             inline=False,
         )
 

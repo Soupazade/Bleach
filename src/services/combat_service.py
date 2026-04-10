@@ -11,6 +11,7 @@ from src.data.exploration import get_explore_approach
 from src.models.combat import ActiveExplorationCombat
 from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
+from src.services.effect_service import EffectiveCombatSnapshot
 
 
 CombatAction = Literal["attack", "guard", "focus", "retreat"]
@@ -145,6 +146,7 @@ async def create_active_exploration_combat(
     reward_xp_lose: int,
     reputation_change: int = 0,
     enemy_template: CombatEnemyTemplate | None = None,
+    combat_snapshot: EffectiveCombatSnapshot | None = None,
     message_id: int | None = None,
 ) -> ActiveExplorationCombat:
     approach = get_explore_approach(exploration.approach)
@@ -152,6 +154,16 @@ async def create_active_exploration_combat(
         exploration.location,
         encounter_title=encounter_title,
         approach_risk=approach.risk_tier,
+    )
+    snapshot = combat_snapshot or EffectiveCombatSnapshot(
+        hp_current=max(1, player.hp_current),
+        hp_max=player.hp_max,
+        mana_current=player.mana_current,
+        mana_max=player.mana_max,
+        power=player.power,
+        defense=player.defense,
+        speed=player.speed,
+        reiatsu=player.reiatsu,
     )
     record = await connection.fetchrow(
         f"""
@@ -212,14 +224,14 @@ async def create_active_exploration_combat(
         reward_xp_win,
         reward_xp_lose,
         reputation_change,
-        max(1, player.hp_current),
-        player.hp_max,
-        player.mana_current,
-        player.mana_max,
-        player.power,
-        player.defense,
-        player.speed,
-        player.reiatsu,
+        snapshot.hp_current,
+        snapshot.hp_max,
+        snapshot.mana_current,
+        snapshot.mana_max,
+        snapshot.power,
+        snapshot.defense,
+        snapshot.speed,
+        snapshot.reiatsu,
         1,
         0,
         False,

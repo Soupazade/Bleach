@@ -149,6 +149,24 @@ CREATE TABLE IF NOT EXISTS player_npc_progress (
 );
 """
 
+CREATE_PLAYER_EFFECTS_TABLE = """
+CREATE TABLE IF NOT EXISTS player_effects (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    effect_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    effect_type TEXT NOT NULL,
+    magnitude INTEGER NOT NULL,
+    duration_minutes INTEGER,
+    expires_at TIMESTAMPTZ,
+    remaining_explores INTEGER,
+    source_text TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
 PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS user_id BIGINT",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS race TEXT NOT NULL DEFAULT 'Soul'",
@@ -226,6 +244,16 @@ ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS = (
 CREATE_PLAYER_NPC_PROGRESS_LOOKUP_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_player_npc_progress_user_npc
 ON player_npc_progress (user_id, npc_id);
+"""
+
+CREATE_PLAYER_EFFECTS_USER_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_effects_user_id
+ON player_effects (user_id);
+"""
+
+CREATE_PLAYER_EFFECTS_EXPIRES_AT_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_effects_expires_at
+ON player_effects (expires_at);
 """
 
 
@@ -351,3 +379,6 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_ACTIVE_EXPLORATION_COMBATS_MESSAGE_ID_INDEX)
         await connection.execute(CREATE_PLAYER_NPC_PROGRESS_TABLE)
         await connection.execute(CREATE_PLAYER_NPC_PROGRESS_LOOKUP_INDEX)
+        await connection.execute(CREATE_PLAYER_EFFECTS_TABLE)
+        await connection.execute(CREATE_PLAYER_EFFECTS_USER_INDEX)
+        await connection.execute(CREATE_PLAYER_EFFECTS_EXPIRES_AT_INDEX)

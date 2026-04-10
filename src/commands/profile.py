@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
+from src.services.effect_service import list_active_player_effects
 from src.services.player_service import get_player_profile
 from src.ui.profile_view import (
     ProfileView,
@@ -27,15 +28,17 @@ def register_profile_command(bot: "BleachBot") -> None:
         if player is None:
             await interaction.response.send_message(embed=build_profile_missing_embed(), ephemeral=True)
             return
+        active_effects = await list_active_player_effects(bot.db_pool, interaction.user.id)
 
         view = ProfileView(
             db_pool=bot.db_pool,
             owner_id=interaction.user.id,
             player=player,
             discord_user=interaction.user,
+            active_effects=active_effects,
             initial_page=initial_page,
         )
-        embed = build_profile_embed(player, interaction.user, initial_page)
+        embed = build_profile_embed(player, interaction.user, initial_page, active_effects=active_effects)
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()
