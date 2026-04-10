@@ -26,6 +26,7 @@ from src.data.exploration import (
     get_random_special_offer_template,
     get_random_special_event,
 )
+from src.data.items import CLOTH_SCRAPS, FOOD_SCRAPS, ItemDefinition
 from src.data.locations import get_location_definition
 from src.data.npcs import get_npc_definition
 from src.models.combat import ActiveExplorationCombat
@@ -53,6 +54,7 @@ from src.services.effect_service import (
     get_special_trigger_bonus_pct,
 )
 from src.services.formulas import apply_experience_gain, format_remaining_duration
+from src.services.inventory_service import grant_inventory_item_for_connection
 from src.services.npc_service import (
     get_eligible_npc_encounter,
     get_npc_encounter_definition,
@@ -186,11 +188,21 @@ class ExplorationResolution:
     combat_outcome: str | None = None
     explore_xp_effect_text: str | None = None
     applied_effect: "AppliedExploreEffect | None" = None
+    applied_loot: "AppliedExploreLoot | None" = None
 
 
 @dataclass(slots=True)
 class AppliedExploreEffect:
     title: str
+    description: str
+    summary_text: str
+
+
+@dataclass(slots=True)
+class AppliedExploreLoot:
+    item_key: str
+    item_name: str
+    quantity: int
     description: str
     summary_text: str
 
@@ -821,6 +833,72 @@ async def _apply_explore_bonus_effect(
     )
 
 
+def _get_reward_loot_item(
+    *,
+    event_type: Literal["reward", "choice", "flavor"],
+    title: str,
+) -> ItemDefinition | None:
+    if event_type == "reward":
+        if title in {"Scrap Luck", "Rumor Turned Reward"}:
+            return CLOTH_SCRAPS
+        if title == "A Kind Hand in a Hard Place":
+            return FOOD_SCRAPS
+        if title == "Market Edge Score":
+            return random.choice((CLOTH_SCRAPS, FOOD_SCRAPS))
+
+    if event_type == "flavor":
+        if title in {"Hunger in the Air", "Small Mercy, Small Hope"}:
+            return FOOD_SCRAPS
+        if title in {"Another Night in Rukongai", "The District Watches Back"}:
+            return CLOTH_SCRAPS
+
+    return None
+
+
+def _roll_loot_quantity(player: PlayerProfile) -> int:
+    luck_bonus = int(round(player.trait_data.bonuses.event_reward_pct * 100))
+    luck_bonus += max(0, player.rukongai_rep // 25)
+    roll = random.randint(1, 100) + luck_bonus
+    if roll >= 92:
+        return 3
+    if roll >= 58:
+        return 2
+    return 1
+
+
+async def _apply_explore_loot_reward(
+    connection: Connection,
+    *,
+    player: PlayerProfile,
+    event_type: Literal["reward", "choice", "flavor"],
+    title: str,
+) -> AppliedExploreLoot | None:
+    item_definition = _get_reward_loot_item(event_type=event_type, title=title)
+    if item_definition is None:
+        return None
+
+    quantity = _roll_loot_quantity(player)
+    granted_item = await grant_inventory_item_for_connection(
+        connection,
+        user_id=player.user_id,
+        item_key=item_definition.key,
+        item_name=item_definition.name,
+        quantity=quantity,
+        item_description=item_definition.description,
+        item_type=item_definition.item_type,
+        rarity=item_definition.rarity,
+        stackable=item_definition.stackable,
+        source_text="Rukongai Streets",
+    )
+    return AppliedExploreLoot(
+        item_key=granted_item.item_key,
+        item_name=granted_item.item_name,
+        quantity=quantity,
+        description=item_definition.description,
+        summary_text=f"Found **{quantity}x {granted_item.item_name}**",
+    )
+
+
 def _get_instant_reputation_change(
     event_type: Literal["reward", "combat", "choice", "flavor"],
     combat_outcome: str | None,
@@ -929,6 +1007,12 @@ async def _finalize_non_combat_resolution(
         combat_outcome=combat_outcome,
         reputation_change=applied_reputation_change,
     )
+    applied_loot = await _apply_explore_loot_reward(
+        connection,
+        player=player,
+        event_type=event_type,
+        title=title,
+    )
     return ExplorationResolution(
         exploration=exploration,
         player=player,
@@ -943,6 +1027,7 @@ async def _finalize_non_combat_resolution(
         combat_outcome=combat_outcome,
         explore_xp_effect_text=xp_effect_text,
         applied_effect=applied_effect,
+        applied_loot=applied_loot,
     )
 
 
@@ -1875,6 +1960,16 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
                 f"✨ {resolution.applied_effect.title}",
                 resolution.applied_effect.description,
                 resolution.applied_effect.summary_text,
+            ),
+            inline=False,
+        )
+
+    if resolution.applied_loot is not None:
+        embed.add_field(
+            name="Loot Found",
+            value=build_explore_info_lines(
+                f"📦 {resolution.applied_loot.summary_text}",
+                resolution.applied_loot.description,
             ),
             inline=False,
         )
