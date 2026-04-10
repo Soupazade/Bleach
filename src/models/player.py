@@ -17,6 +17,7 @@ class PlayerProfile:
     rank: str
     level: int
     xp: int
+    kan: int
     hp_current: int
     hp_max: int
     stamina_current: int
@@ -54,6 +55,7 @@ class PlayerProfile:
             rank=str(record["rank"]),
             level=int(record["level"]),
             xp=int(record["xp"]),
+            kan=int(record["kan"]),
             hp_current=int(record["hp_current"]),
             hp_max=int(record["hp_max"]),
             stamina_current=int(record["stamina_current"]),

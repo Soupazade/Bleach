@@ -78,6 +78,7 @@ def build_inventory_embed(
             f"❤️ HP: {player.hp_current}/{player.hp_max}",
             f"🔷 Mana: {player.mana_current}/{player.mana_max}",
             f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
+            f"💰 Kan: {player.kan}",
             f"📈 Level: {player.level}",
             f"🎭 {reputation_label}: {reputation_title}",
         ),

@@ -37,6 +37,7 @@ PLAYER_PROFILE_COLUMNS = """
     rank,
     level,
     xp,
+    kan,
     hp_current,
     hp_max,
     stamina_current,
@@ -356,6 +357,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                         rank,
                         level,
                         xp,
+                        kan,
                         hp_current,
                         hp_max,
                         stamina_current,
@@ -378,7 +380,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                     VALUES (
                         $1, $2, $3, $4, $5, $6, $7, $8, $9,
                         $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                        $19, $20, $21, $22, $23, $24
+                        $19, $20, $21, $22, $23, $24, $25
                     )
                     ON CONFLICT (user_id) DO NOTHING
                     RETURNING {PLAYER_PROFILE_COLUMNS}
@@ -389,6 +391,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                     STARTING_RANK,
                     STARTING_LEVEL,
                     STARTING_XP,
+                    500,
                     STARTING_HP,
                     STARTING_HP,
                     STARTING_STAMINA,
@@ -417,6 +420,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                         rank,
                         level,
                         xp,
+                        kan,
                         hp_current,
                         hp_max,
                         stamina_current,
@@ -439,7 +443,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                     VALUES (
                         $1, $2, $3, $4, $5, $6, $7, $8, $9,
                         $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                        $19, $20, $21, $22, $23
+                        $19, $20, $21, $22, $23, $24
                     )
                     ON CONFLICT (user_id) DO NOTHING
                     RETURNING {PLAYER_PROFILE_COLUMNS}
@@ -449,6 +453,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                     STARTING_RANK,
                     STARTING_LEVEL,
                     STARTING_XP,
+                    500,
                     STARTING_HP,
                     STARTING_HP,
                     STARTING_STAMINA,

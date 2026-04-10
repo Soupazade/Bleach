@@ -199,6 +199,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
         value=(
             f"Level: **{profile.level}**\n"
             f"XP: **{profile.xp}**\n"
+            f"Kan: **{profile.kan}**\n"
             f"Power: **{profile.power}**\n"
             f"Defense: **{profile.defense}**\n"
             f"Speed: **{profile.speed}**\n"

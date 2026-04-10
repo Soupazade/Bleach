@@ -43,7 +43,7 @@ def build_start_embed(
     )
     embed.add_field(
         name="Progress",
-        value=f"Level: **{profile.level}**\nXP: **{profile.xp}**",
+        value=f"Level: **{profile.level}**\nXP: **{profile.xp}**\nKan: **{profile.kan}**",
         inline=True,
     )
     embed.add_field(
