@@ -168,6 +168,24 @@ CREATE TABLE IF NOT EXISTS player_effects (
 );
 """
 
+CREATE_PLAYER_INVENTORY_ITEMS_TABLE = """
+CREATE TABLE IF NOT EXISTS player_inventory_items (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    item_name TEXT NOT NULL,
+    item_description TEXT NOT NULL DEFAULT '',
+    item_type TEXT NOT NULL DEFAULT 'misc',
+    rarity TEXT NOT NULL DEFAULT 'common',
+    quantity INTEGER NOT NULL DEFAULT 1,
+    stackable BOOLEAN NOT NULL DEFAULT TRUE,
+    source_text TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
 PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS user_id BIGINT",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS race TEXT NOT NULL DEFAULT 'Soul'",
@@ -256,6 +274,16 @@ ON player_effects (user_id);
 CREATE_PLAYER_EFFECTS_EXPIRES_AT_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_player_effects_expires_at
 ON player_effects (expires_at);
+"""
+
+CREATE_PLAYER_INVENTORY_USER_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_inventory_user_id
+ON player_inventory_items (user_id);
+"""
+
+CREATE_PLAYER_INVENTORY_ITEM_KEY_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_inventory_item_key
+ON player_inventory_items (user_id, item_key);
 """
 
 
@@ -384,3 +412,6 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_PLAYER_EFFECTS_TABLE)
         await connection.execute(CREATE_PLAYER_EFFECTS_USER_INDEX)
         await connection.execute(CREATE_PLAYER_EFFECTS_EXPIRES_AT_INDEX)
+        await connection.execute(CREATE_PLAYER_INVENTORY_ITEMS_TABLE)
+        await connection.execute(CREATE_PLAYER_INVENTORY_USER_INDEX)
+        await connection.execute(CREATE_PLAYER_INVENTORY_ITEM_KEY_INDEX)

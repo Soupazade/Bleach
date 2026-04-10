@@ -1,4 +1,5 @@
 from src.commands.explore import register_explore_command
+from src.commands.inventory import register_inventory_command
 from src.commands.profile import register_profile_command
 from src.commands.rest import register_rest_command
 from src.commands.staff import register_staff_commands
@@ -10,6 +11,7 @@ from src.commands.travel import register_travel_command
 def register_commands(bot) -> None:
     register_start_command(bot)
     register_profile_command(bot)
+    register_inventory_command(bot)
     register_explore_command(bot)
     register_train_command(bot)
     register_travel_command(bot)
