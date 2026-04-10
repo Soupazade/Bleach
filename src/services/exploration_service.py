@@ -690,13 +690,13 @@ async def _apply_progression_and_reputation(
     location_key: str,
     xp_gained: int,
     reputation_change: int = 0,
-) -> tuple[PlayerProfile, int, int]:
+) -> tuple[PlayerProfile, int, int, int]:
     player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
     if player_sync is None:
         raise ValueError(f"Missing player profile for user {user_id}")
 
     current_player = PlayerProfile.from_record(player_sync.record)
-    new_level, new_xp, levels_gained = apply_experience_gain(
+    new_level, new_xp, levels_gained, applied_xp = apply_experience_gain(
         current_level=current_player.level,
         current_xp=current_player.xp,
         xp_gain=xp_gained,
@@ -716,7 +716,7 @@ async def _apply_progression_and_reputation(
         updates[reputation_field] = updated_reputation
 
     updated_player_record = await update_player_record(connection, user_id, updates)
-    return PlayerProfile.from_record(updated_player_record), levels_gained, applied_reputation_change
+    return PlayerProfile.from_record(updated_player_record), levels_gained, applied_reputation_change, applied_xp
 
 
 async def _get_current_player(
@@ -901,7 +901,7 @@ async def _finalize_non_combat_resolution(
         user_id,
         adjusted_xp,
     )
-    player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+    player, levels_gained, applied_reputation_change, applied_xp = await _apply_progression_and_reputation(
         connection,
         user_id,
         location_key=exploration.location,
@@ -921,7 +921,7 @@ async def _finalize_non_combat_resolution(
         event_type=event_type,
         title=title,
         description=description,
-        xp_gained=final_xp,
+        xp_gained=applied_xp,
         levels_gained=levels_gained,
         base_xp=base_xp,
         reputation_xp_modifier_pct=xp_modifier_pct,
@@ -1038,7 +1038,7 @@ async def _finalize_combat_resolution(
         combat.user_id,
         adjusted_xp,
     )
-    player, levels_gained, applied_reputation_change = await _apply_progression_and_reputation(
+    player, levels_gained, applied_reputation_change, applied_xp = await _apply_progression_and_reputation(
         connection,
         combat.user_id,
         location_key=combat.location,
@@ -1074,7 +1074,7 @@ async def _finalize_combat_resolution(
         event_type="combat",
         title=title,
         description=description,
-        xp_gained=final_xp,
+        xp_gained=applied_xp,
         levels_gained=levels_gained,
         base_xp=base_xp,
         reputation_xp_modifier_pct=xp_modifier_pct,

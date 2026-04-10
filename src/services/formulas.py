@@ -76,7 +76,13 @@ def calculate_passive_stamina_recovery(
 def get_xp_required_for_level(level: int) -> int:
     # Rukongai is tuned as the early-game zone for roughly levels 1-10, so the
     # opening curve stays intentionally quick and rewarding before later regions scale up.
+    if level >= RUKONGAI_EARLY_GAME_LEVEL_CAP:
+        return 0
     return max(1, level) * RUKONGAI_XP_PER_LEVEL
+
+
+def is_at_level_cap(level: int) -> bool:
+    return level >= RUKONGAI_EARLY_GAME_LEVEL_CAP
 
 
 def get_total_stat_cap_for_level(level: int) -> int:
@@ -111,17 +117,43 @@ def apply_experience_gain(
     current_level: int,
     current_xp: int,
     xp_gain: int,
-) -> tuple[int, int, int]:
-    level = current_level
-    xp = current_xp + xp_gain
-    levels_gained = 0
+) -> tuple[int, int, int, int]:
+    normalized_gain = max(0, xp_gain)
+    if is_at_level_cap(current_level):
+        return RUKONGAI_EARLY_GAME_LEVEL_CAP, 0, 0, 0
 
-    while xp >= get_xp_required_for_level(level):
-        xp -= get_xp_required_for_level(level)
+    level = current_level
+    xp = current_xp + normalized_gain
+    levels_gained = 0
+    applied_xp = normalized_gain
+
+    while not is_at_level_cap(level):
+        xp_required = get_xp_required_for_level(level)
+        if xp < xp_required:
+            break
+
+        xp -= xp_required
         level += 1
         levels_gained += 1
 
-    return level, xp, levels_gained
+    if is_at_level_cap(level):
+        simulated_level = current_level
+        simulated_xp = current_xp
+        applied_until_cap = 0
+
+        while simulated_level < RUKONGAI_EARLY_GAME_LEVEL_CAP and applied_until_cap < normalized_gain:
+            required = get_xp_required_for_level(simulated_level)
+            needed = required - simulated_xp
+            spend = min(needed, normalized_gain - applied_until_cap)
+            applied_until_cap += spend
+            simulated_xp += spend
+            if simulated_xp >= required:
+                simulated_level += 1
+                simulated_xp = 0
+
+        return RUKONGAI_EARLY_GAME_LEVEL_CAP, 0, levels_gained, applied_until_cap
+
+    return level, xp, levels_gained, applied_xp
 
 
 def format_remaining_duration(end_time: datetime, now: datetime | None = None) -> str:

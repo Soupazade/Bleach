@@ -426,13 +426,14 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         xp_to_next = get_xp_required_for_level(updated_player.level)
+        stored_xp_text = f"**{updated_player.xp} / {xp_to_next}**" if xp_to_next > 0 else "**MAX / MAX**"
         embed = discord.Embed(
             title="XP Set",
             description=f"{player.mention}'s XP progress has been updated.",
             color=discord.Color.blue(),
         )
         embed.add_field(name="Level", value=f"**{updated_player.level}**", inline=True)
-        embed.add_field(name="Stored XP", value=f"**{updated_player.xp} / {xp_to_next}**", inline=True)
+        embed.add_field(name="Stored XP", value=stored_xp_text, inline=True)
         embed.add_field(name="Levels Gained", value=f"**{levels_gained}**", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -482,13 +483,14 @@ def register_staff_commands(bot: "BleachBot") -> None:
             return
 
         xp_to_next = get_xp_required_for_level(updated_player.level)
+        stored_xp_text = f"**{updated_player.xp} / {xp_to_next}**" if xp_to_next > 0 else "**MAX / MAX**"
         embed = discord.Embed(
             title="XP Granted",
             description=f"{player.mention} gains **{amount} XP**.",
             color=discord.Color.gold(),
         )
         embed.add_field(name="Level", value=f"**{updated_player.level}**", inline=True)
-        embed.add_field(name="Stored XP", value=f"**{updated_player.xp} / {xp_to_next}**", inline=True)
+        embed.add_field(name="Stored XP", value=stored_xp_text, inline=True)
         embed.add_field(name="Levels Gained", value=f"**{levels_gained}**", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

@@ -35,7 +35,11 @@ from src.services.training_service import (
     fetch_active_training_record,
     get_active_training,
 )
-from src.services.formulas import apply_experience_gain, get_total_stat_cap_for_level
+from src.services.formulas import (
+    RUKONGAI_EARLY_GAME_LEVEL_CAP,
+    apply_experience_gain,
+    get_total_stat_cap_for_level,
+)
 from src.services.player_service import (
     get_player_profile,
     get_rest_status,
@@ -100,7 +104,7 @@ async def set_player_xp(pool: Pool | None, user_id: int, xp_amount: int) -> tupl
                 return None, 0
 
             record = sync_result.record
-            level, xp, levels_gained = apply_experience_gain(
+            level, xp, levels_gained, _ = apply_experience_gain(
                 current_level=int(record["level"]),
                 current_xp=0,
                 xp_gain=normalized_xp,
@@ -121,7 +125,7 @@ async def set_player_level(pool: Pool | None, user_id: int, level_amount: int) -
     if pool is None:
         return None
 
-    normalized_level = max(1, level_amount)
+    normalized_level = max(1, min(RUKONGAI_EARLY_GAME_LEVEL_CAP, level_amount))
 
     async with pool.acquire() as connection:
         async with connection.transaction():
@@ -154,7 +158,7 @@ async def give_player_xp(pool: Pool | None, user_id: int, xp_amount: int) -> tup
                 return None, 0
 
             record = sync_result.record
-            level, xp, levels_gained = apply_experience_gain(
+            level, xp, levels_gained, _ = apply_experience_gain(
                 current_level=int(record["level"]),
                 current_xp=int(record["xp"]),
                 xp_gain=normalized_xp,

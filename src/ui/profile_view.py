@@ -16,6 +16,7 @@ from src.services.formulas import (
     get_remaining_stat_capacity,
     get_total_stat_cap_for_level,
     get_xp_required_for_level,
+    is_at_level_cap,
 )
 from src.services.location_service import format_location_room_reference
 from src.services.player_service import get_player_profile, get_rest_status
@@ -361,6 +362,11 @@ def build_profile_embed(
 
     if page_key == "progression":
         xp_to_next = max(0, get_xp_required_for_level(player.level) - player.xp)
+        xp_line = f"🎯 XP: {player.xp}"
+        next_level_line = f"📈 To Next Level: {xp_to_next}"
+        if is_at_level_cap(player.level):
+            xp_line = "🎯 XP: MAXED"
+            next_level_line = "📈 To Next Level: MAX"
         embed = _build_profile_embed_shell(
             page_key=page_key,
             discord_user=discord_user,
@@ -373,8 +379,8 @@ def build_profile_embed(
             name="Current State",
             value=build_explore_info_lines(
                 f"📈 Level: {player.level}",
-                f"🎯 XP: {player.xp}",
-                f"📈 To Next Level: {xp_to_next}",
+                xp_line,
+                next_level_line,
                 f"🧭 Spiritual Pressure: {player.spiritual_pressure}",
             ),
             inline=True,
