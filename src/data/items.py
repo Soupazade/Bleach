@@ -28,9 +28,29 @@ BANDAGES = ItemDefinition(
     heal_hp_pct=25,
 )
 
+CLOTH_SCRAPS = ItemDefinition(
+    key="cloth_scraps",
+    name="Cloth Scraps",
+    description="Worn fabric with just enough life left to trade, patch, or repurpose.",
+    item_type="material",
+    rarity="common",
+    stackable=True,
+)
+
+FOOD_SCRAPS = ItemDefinition(
+    key="food_scraps",
+    name="Food Scraps",
+    description="A rough collection of edible leftovers. Not dignified, but still worth something.",
+    item_type="material",
+    rarity="common",
+    stackable=True,
+)
+
 
 ITEM_DEFINITIONS: dict[str, ItemDefinition] = {
     BANDAGES.key: BANDAGES,
+    CLOTH_SCRAPS.key: CLOTH_SCRAPS,
+    FOOD_SCRAPS.key: FOOD_SCRAPS,
 }
 
 
