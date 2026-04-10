@@ -147,6 +147,7 @@ async def create_active_exploration_combat(
     reputation_change: int = 0,
     enemy_template: CombatEnemyTemplate | None = None,
     combat_snapshot: EffectiveCombatSnapshot | None = None,
+    initial_focus_bonus: int = 0,
     message_id: int | None = None,
 ) -> ActiveExplorationCombat:
     approach = get_explore_approach(exploration.approach)
@@ -233,7 +234,7 @@ async def create_active_exploration_combat(
         snapshot.speed,
         snapshot.reiatsu,
         1,
-        0,
+        initial_focus_bonus,
         False,
         "The alley tightens. One bad exchange and the whole run goes sideways.",
     )

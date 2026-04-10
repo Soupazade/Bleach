@@ -20,6 +20,7 @@ from src.services.exploration_service import (
     fetch_pending_choice_record,
 )
 from src.services.formulas import format_remaining_duration
+from src.services.effect_service import apply_travel_time_modifier, list_active_player_effects_for_connection
 from src.services.location_service import resolve_location_channel
 from src.services.player_service import get_or_sync_player_record, update_player_record
 from src.services.reputation_service import (
@@ -245,6 +246,7 @@ async def start_travel(
             except ValueError:
                 return StartTravelResult(status="invalid_route", player=player)
 
+            active_effects = await list_active_player_effects_for_connection(connection, user_id)
             stamina_cost, _ = _apply_location_travel_stamina_cost(player, route.stamina_cost)
             if player.stamina_current < stamina_cost:
                 return StartTravelResult(
@@ -254,6 +256,7 @@ async def start_travel(
                     base_stamina_cost=route.stamina_cost,
                 )
 
+            duration_minutes = apply_travel_time_modifier(route.duration_minutes, active_effects)
             updated_player_record = await update_player_record(
                 connection,
                 user_id,
@@ -270,7 +273,7 @@ async def start_travel(
                 source_location=player.location,
                 destination_location=destination_location,
                 start_time=now,
-                end_time=now.replace(microsecond=0) + timedelta(minutes=route.duration_minutes),
+                end_time=now.replace(microsecond=0) + timedelta(minutes=duration_minutes),
                 stamina_cost=stamina_cost,
             )
             return StartTravelResult(

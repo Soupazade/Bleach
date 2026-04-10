@@ -35,7 +35,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="A bitter little bottle changes hands in the dark. It tastes awful and wakes every nerve you have.",
         effect_type="stamina_regen_pct",
         magnitude=25,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="full_belly",
@@ -93,6 +93,38 @@ POSITIVE_EXPLORE_EFFECTS = (
         magnitude=15,
         duration_minutes=60,
     ),
+    ExploreEffectTemplate(
+        key="back_alley_voucher",
+        title="Back-Alley Voucher",
+        description="A trader with nervous hands slips you a marked chit and mutters that somebody farther up the lane owes you a better deal.",
+        effect_type="shop_discount_pct",
+        magnitude=25,
+        duration_minutes=60,
+    ),
+    ExploreEffectTemplate(
+        key="safe_route",
+        title="Safe Route",
+        description="A runner scratches a cleaner path through the district onto torn paper. It will not stay safe forever, but it should hold for a while.",
+        effect_type="travel_time_flat",
+        magnitude=-1,
+        duration_minutes=60,
+    ),
+    ExploreEffectTemplate(
+        key="crowd_intel",
+        title="Crowd Intel",
+        description="By the time the murmurs die, you know where trouble usually steps from and how long it takes fear to turn into violence.",
+        effect_type="combat_focus_flat",
+        magnitude=4,
+        duration_minutes=60,
+    ),
+    ExploreEffectTemplate(
+        key="street_favor",
+        title="Street Favor",
+        description="Someone in the block quietly puts your name in the right ear. It does not make the streets kind. It just makes them a little less closed.",
+        effect_type="special_trigger_pct",
+        magnitude=10,
+        duration_minutes=60,
+    ),
 )
 
 NEGATIVE_EXPLORE_EFFECTS = (
@@ -109,7 +141,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="Smoke, dust, and alley stink cling to your chest. Breathing turns heavier than it should.",
         effect_type="stamina_regen_pct",
         magnitude=-25,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="shaking_hands",
@@ -117,7 +149,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="Your knuckles still hum from the last hard exchange. There is strength there, but not the clean kind.",
         effect_type="power_pct",
         magnitude=-15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="bruised_guard",
@@ -125,7 +157,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="You caught one hit too flush. Every raised arm reminds you of it.",
         effect_type="defense_pct",
         magnitude=-15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="twisted_ankle",
@@ -133,7 +165,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="One bad landing in broken stone leaves your footing off by just enough to matter.",
         effect_type="speed_pct",
         magnitude=-15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="rattled_focus",
@@ -141,7 +173,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="Too much noise, too little calm. Your reiatsu keeps slipping every time you try to gather it cleanly.",
         effect_type="reiatsu_pct",
         magnitude=-15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="split_lip",
@@ -149,7 +181,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="You are still upright, but the street tagged you before it let you leave.",
         effect_type="hp_pct",
         magnitude=-15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="drained_nerves",
@@ -157,7 +189,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         description="Whatever steadiness you had burns off fast. The next draw on your spirit feels thinner.",
         effect_type="mana_pct",
         magnitude=-15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
 )
 

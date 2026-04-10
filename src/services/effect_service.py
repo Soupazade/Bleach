@@ -160,6 +160,18 @@ def describe_effect_for_embed(effect: PlayerEffect) -> str:
     if effect.effect_type == "xp_boost_pct":
         uses = effect.remaining_explores if effect.remaining_explores is not None else 0
         return f"{effect.title} — {_effect_sign_text(effect.magnitude)}% XP for {uses} explore(s)"
+    if effect.effect_type == "shop_discount_pct":
+        duration = f" for {effect.duration_minutes}m" if effect.duration_minutes is not None else ""
+        return f"{effect.title} — {abs(effect.magnitude)}% shop discount{duration}"
+    if effect.effect_type == "travel_time_flat":
+        duration = f" for {effect.duration_minutes}m" if effect.duration_minutes is not None else ""
+        return f"{effect.title} — {abs(effect.magnitude)} minute faster travel{duration}"
+    if effect.effect_type == "combat_focus_flat":
+        duration = f" for {effect.duration_minutes}m" if effect.duration_minutes is not None else ""
+        return f"{effect.title} — {_effect_sign_text(effect.magnitude)} opening focus{duration}"
+    if effect.effect_type == "special_trigger_pct":
+        duration = f" for {effect.duration_minutes}m" if effect.duration_minutes is not None else ""
+        return f"{effect.title} — {_effect_sign_text(effect.magnitude)}% special-event chance{duration}"
 
     label_map = {
         "power_pct": "Power",
@@ -195,6 +207,35 @@ def get_stamina_regen_modifier_pct(effects: list[PlayerEffect]) -> int:
 
 def get_effective_stat_modifier_pct(effects: list[PlayerEffect], effect_type: str) -> int:
     return _total_modifier(effects, effect_type)
+
+
+def get_shop_discount_pct(effects: list[PlayerEffect]) -> int:
+    return max(0, _total_modifier(effects, "shop_discount_pct"))
+
+
+def apply_shop_discount_effect(base_price: int, effects: list[PlayerEffect]) -> int:
+    discount_pct = get_shop_discount_pct(effects)
+    if discount_pct <= 0:
+        return max(1, base_price)
+
+    scaled = base_price * (1 - discount_pct / 100)
+    return max(1, int(round(scaled)))
+
+
+def get_travel_time_modifier_minutes(effects: list[PlayerEffect]) -> int:
+    return _total_modifier(effects, "travel_time_flat")
+
+
+def apply_travel_time_modifier(base_minutes: int, effects: list[PlayerEffect]) -> int:
+    return max(1, base_minutes + get_travel_time_modifier_minutes(effects))
+
+
+def get_initial_combat_focus_bonus(effects: list[PlayerEffect]) -> int:
+    return max(0, _total_modifier(effects, "combat_focus_flat"))
+
+
+def get_special_trigger_bonus_pct(effects: list[PlayerEffect]) -> int:
+    return max(0, _total_modifier(effects, "special_trigger_pct"))
 
 
 def apply_stamina_regen_modifier(base_gain: int, modifier_pct: int) -> int:

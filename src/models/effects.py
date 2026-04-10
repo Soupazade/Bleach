@@ -15,6 +15,10 @@ PlayerEffectType = Literal[
     "reiatsu_pct",
     "hp_pct",
     "mana_pct",
+    "shop_discount_pct",
+    "travel_time_flat",
+    "combat_focus_flat",
+    "special_trigger_pct",
 ]
 
 

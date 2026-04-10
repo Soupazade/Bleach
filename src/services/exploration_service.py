@@ -47,7 +47,9 @@ from src.services.effect_service import (
     build_effective_combat_snapshot,
     describe_effect_for_embed,
     grant_player_effect,
+    get_initial_combat_focus_bonus,
     list_active_player_effects_for_connection,
+    get_special_trigger_bonus_pct,
 )
 from src.services.formulas import apply_experience_gain, format_remaining_duration
 from src.services.npc_service import (
@@ -532,13 +534,14 @@ def _roll_resolution_flow(approach: ExploreApproachDefinition) -> ExploreFlowTyp
     )[0]
 
 
-def _roll_special_trigger(approach: ExploreApproachDefinition) -> bool:
+def _roll_special_trigger(approach: ExploreApproachDefinition, *, bonus_pct: int = 0) -> bool:
     chance_by_risk = {
         "low": 0.10,
         "medium": 0.12,
         "high": 0.15,
     }
-    return random.random() < chance_by_risk.get(approach.risk_tier, 0.12)
+    total_chance = chance_by_risk.get(approach.risk_tier, 0.12) + (bonus_pct / 100)
+    return random.random() < min(0.85, total_chance)
 
 
 def _format_event_description(
@@ -818,8 +821,12 @@ def _get_instant_reputation_change(
     return 0
 
 
-def _should_trigger_special_opportunity(approach: ExploreApproachDefinition) -> bool:
-    return _roll_special_trigger(approach)
+def _should_trigger_special_opportunity(
+    approach: ExploreApproachDefinition,
+    effects: list[PlayerEffect] | None = None,
+) -> bool:
+    bonus_pct = 0 if effects is None else get_special_trigger_bonus_pct(effects)
+    return _roll_special_trigger(approach, bonus_pct=bonus_pct)
 
 
 async def _create_special_offer(
@@ -953,11 +960,13 @@ async def _start_instant_combat(
     )
     active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
     combat_snapshot = build_effective_combat_snapshot(player, active_effects)
+    initial_focus_bonus = get_initial_combat_focus_bonus(active_effects)
     return await create_active_exploration_combat(
         connection,
         exploration=exploration,
         player=player,
         combat_snapshot=combat_snapshot,
+        initial_focus_bonus=initial_focus_bonus,
         encounter_title=event.title,
         encounter_description=encounter_description,
         resolution_title=event.title,
@@ -1000,11 +1009,13 @@ async def _start_decision_combat(
     )
     active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
     combat_snapshot = build_effective_combat_snapshot(player, active_effects)
+    initial_focus_bonus = get_initial_combat_focus_bonus(active_effects)
     return await create_active_exploration_combat(
         connection,
         exploration=exploration,
         player=player,
         combat_snapshot=combat_snapshot,
+        initial_focus_bonus=initial_focus_bonus,
         encounter_title=encounter_title,
         encounter_description=encounter_description,
         resolution_title=resolution_title,
@@ -1377,6 +1388,7 @@ async def resolve_exploration(
 
             if resolution_flow == "instant":
                 current_player = await _get_current_player(connection, user_id)
+                active_effects = await list_active_player_effects_for_connection(connection, user_id)
                 event_type = _weighted_event_type(exploration)
 
                 if event_type == "combat":
@@ -1412,7 +1424,7 @@ async def resolve_exploration(
                     reputation_change=reputation_change,
                     combat_outcome=combat_outcome,
                 )
-                if _should_trigger_special_opportunity(approach):
+                if _should_trigger_special_opportunity(approach, active_effects):
                     await _close_active_exploration(connection, exploration)
                     prompt = await _create_special_offer(connection, base_resolution, message_id=None)
                     return ExplorationPostResult(status="choice_prompt", prompt=prompt)
@@ -1602,6 +1614,7 @@ async def advance_exploration_choice(
                 )
 
             current_player = await _get_current_player(connection, user_id)
+            active_effects = await list_active_player_effects_for_connection(connection, user_id)
             event = get_decision_event_definition(session.location, session.event_key)
             step = get_decision_step_definition(event, session.current_step)
             if option_slot < 1 or option_slot > len(step.options):
@@ -1674,7 +1687,7 @@ async def advance_exploration_choice(
                 reputation_change=outcome.reputation_change,
                 combat_outcome=outcome.combat_outcome,
             )
-            if session.session_kind == "decision" and outcome.event_type != "combat" and _should_trigger_special_opportunity(approach):
+            if session.session_kind == "decision" and outcome.event_type != "combat" and _should_trigger_special_opportunity(approach, active_effects):
                 await delete_pending_choice(connection, user_id)
                 prompt = await _create_special_offer(
                     connection,

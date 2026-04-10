@@ -69,9 +69,9 @@ def build_travel_started_embed(
 ) -> discord.Embed:
     source = get_location_definition(travel.source_location)
     destination = get_location_definition(travel.destination_location)
-    route = get_travel_route(travel.source_location, travel.destination_location)
     reputation_title = get_location_reputation_title(player, travel.source_location)
     stamina_modifier = travel.stamina_cost - base_stamina_cost
+    duration_minutes = max(1, int((travel.end_time - travel.start_time).total_seconds() // 60))
 
     embed = discord.Embed(
         title="🧭 You Take the Road",
@@ -85,7 +85,7 @@ def build_travel_started_embed(
         name="Timing",
         value=build_explore_info_lines(
             f"🧭 To: {destination.name}",
-            f"⏱ Duration: {route.duration_minutes} minute{'s' if route.duration_minutes != 1 else ''}",
+            f"⏱ Duration: {duration_minutes} minute{'s' if duration_minutes != 1 else ''}",
             f"🕓 Ends: {discord.utils.format_dt(travel.end_time, 'R')}",
         ),
         inline=True,
@@ -140,7 +140,7 @@ def build_travel_active_embed(player: PlayerProfile, travel: ActiveTravel) -> di
 def build_travel_arrived_embed(resolution: TravelResolution) -> discord.Embed:
     source = get_location_definition(resolution.travel.source_location)
     destination = resolution.player.location_data
-    route = get_travel_route(resolution.travel.source_location, resolution.travel.destination_location)
+    duration_minutes = max(1, int((resolution.travel.end_time - resolution.travel.start_time).total_seconds() // 60))
     embed = discord.Embed(
         title=f"🧭 Arrival — {destination.name}",
         description=(
@@ -154,7 +154,7 @@ def build_travel_arrived_embed(resolution: TravelResolution) -> discord.Embed:
         value=build_explore_info_lines(
             f"📍 From: {source.name}",
             f"🧭 To: {destination.name}",
-            f"⏱ Duration: {route.duration_minutes} minute{'s' if route.duration_minutes != 1 else ''}",
+            f"⏱ Duration: {duration_minutes} minute{'s' if duration_minutes != 1 else ''}",
             f"⚡ Stamina Spent: **{resolution.travel.stamina_cost}**",
         ),
         inline=True,
