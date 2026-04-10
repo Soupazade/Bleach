@@ -205,27 +205,59 @@ def get_exploration_effect_template(
     event_type: Literal["reward", "combat", "choice", "flavor"],
     combat_outcome: str | None,
     reputation_change: int,
+    blocked_effect_types: set[PlayerEffectType] | None = None,
 ) -> ExploreEffectTemplate | None:
+    def _available(pool: tuple[ExploreEffectTemplate, ...]) -> tuple[ExploreEffectTemplate, ...]:
+        if not blocked_effect_types:
+            return pool
+        return tuple(
+            effect for effect in pool
+            if effect.effect_type not in blocked_effect_types
+        )
+
     if event_type == "reward":
-        return _roll_from_pool(POSITIVE_EXPLORE_EFFECTS) if random.random() < 0.35 else None
+        pool = _available(POSITIVE_EXPLORE_EFFECTS)
+        return _roll_from_pool(pool) if pool and random.random() < 0.35 else None
 
     if event_type == "flavor":
         if random.random() >= 0.22:
             return None
-        return _roll_from_pool(POSITIVE_EXPLORE_EFFECTS if random.random() < 0.65 else NEGATIVE_EXPLORE_EFFECTS)
+        choose_positive = random.random() < 0.65
+        primary_pool = _available(POSITIVE_EXPLORE_EFFECTS if choose_positive else NEGATIVE_EXPLORE_EFFECTS)
+        fallback_pool = _available(NEGATIVE_EXPLORE_EFFECTS if choose_positive else POSITIVE_EXPLORE_EFFECTS)
+        if primary_pool:
+            return _roll_from_pool(primary_pool)
+        if fallback_pool:
+            return _roll_from_pool(fallback_pool)
+        return None
 
     if event_type == "combat":
         if combat_outcome == "Victory":
-            return _roll_from_pool(POSITIVE_EXPLORE_EFFECTS) if random.random() < 0.24 else None
+            pool = _available(POSITIVE_EXPLORE_EFFECTS)
+            return _roll_from_pool(pool) if pool and random.random() < 0.24 else None
         if combat_outcome == "Setback":
-            return _roll_from_pool(NEGATIVE_EXPLORE_EFFECTS) if random.random() < 0.42 else None
+            pool = _available(NEGATIVE_EXPLORE_EFFECTS)
+            return _roll_from_pool(pool) if pool and random.random() < 0.42 else None
         return None
 
     if event_type == "choice":
         if reputation_change > 0:
-            return _roll_from_pool(POSITIVE_EXPLORE_EFFECTS) if random.random() < 0.34 else None
+            pool = _available(POSITIVE_EXPLORE_EFFECTS)
+            return _roll_from_pool(pool) if pool and random.random() < 0.34 else None
         if reputation_change < 0:
-            return _roll_from_pool(NEGATIVE_EXPLORE_EFFECTS) if random.random() < 0.34 else None
-        return _roll_from_pool(POSITIVE_EXPLORE_EFFECTS if random.random() < 0.55 else NEGATIVE_EXPLORE_EFFECTS) if random.random() < 0.26 else None
+            pool = _available(NEGATIVE_EXPLORE_EFFECTS)
+            return _roll_from_pool(pool) if pool and random.random() < 0.34 else None
+
+        if random.random() >= 0.26:
+            return None
+
+        choose_positive = random.random() < 0.55
+        primary_pool = _available(POSITIVE_EXPLORE_EFFECTS if choose_positive else NEGATIVE_EXPLORE_EFFECTS)
+        fallback_pool = _available(NEGATIVE_EXPLORE_EFFECTS if choose_positive else POSITIVE_EXPLORE_EFFECTS)
+        if primary_pool:
+            return _roll_from_pool(primary_pool)
+        if fallback_pool:
+            return _roll_from_pool(fallback_pool)
+        return None
 
     return None

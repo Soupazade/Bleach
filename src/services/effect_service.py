@@ -47,6 +47,16 @@ class ExploreXpBoostResult:
     summary_text: str | None = None
 
 
+NON_STACKING_STAT_EFFECT_TYPES = {
+    "power_pct",
+    "defense_pct",
+    "speed_pct",
+    "reiatsu_pct",
+    "hp_pct",
+    "mana_pct",
+}
+
+
 async def fetch_player_effect_records(
     connection: Connection,
     user_id: int,
@@ -236,6 +246,14 @@ def get_initial_combat_focus_bonus(effects: list[PlayerEffect]) -> int:
 
 def get_special_trigger_bonus_pct(effects: list[PlayerEffect]) -> int:
     return max(0, _total_modifier(effects, "special_trigger_pct"))
+
+
+def get_blocked_stat_effect_types(effects: list[PlayerEffect]) -> set[str]:
+    return {
+        effect.effect_type
+        for effect in effects
+        if effect.effect_type in NON_STACKING_STAT_EFFECT_TYPES
+    }
 
 
 def apply_stamina_regen_modifier(base_gain: int, modifier_pct: int) -> int:

@@ -47,6 +47,7 @@ from src.services.effect_service import (
     build_effective_combat_snapshot,
     describe_effect_for_embed,
     grant_player_effect,
+    get_blocked_stat_effect_types,
     get_initial_combat_focus_bonus,
     list_active_player_effects_for_connection,
     get_special_trigger_bonus_pct,
@@ -769,10 +770,16 @@ async def _apply_explore_bonus_effect(
     combat_outcome: str | None,
     reputation_change: int,
 ) -> tuple[PlayerProfile, AppliedExploreEffect | None]:
+    active_effects = await list_active_player_effects_for_connection(
+        connection,
+        player.user_id,
+        for_update=True,
+    )
     template = get_exploration_effect_template(
         event_type=event_type,
         combat_outcome=combat_outcome,
         reputation_change=reputation_change,
+        blocked_effect_types=get_blocked_stat_effect_types(active_effects),
     )
     if template is None:
         return player, None
