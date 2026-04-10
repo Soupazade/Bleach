@@ -15,7 +15,7 @@ from src.services.exploration_service import (
     schedule_exploration_task,
     start_exploration,
 )
-from src.services.player_service import build_resting_block_message
+from src.services.player_service import build_resting_block_message, get_rest_status
 from src.services.reputation_service import (
     format_reputation_stamina_text,
     get_location_reputation_title,
@@ -394,14 +394,11 @@ class ExploreView(discord.ui.View):
             return
 
         if result.status == "resting" and result.player is not None:
+            rest_status = get_rest_status(result.player)
             self.stop()
             await interaction.response.edit_message(
                 embed=build_explore_resting_embed(
-                    build_resting_block_message(
-                        result.player,
-                        result.rest_minutes,
-                        result.rest_recovery,
-                    )
+                    build_resting_block_message(result.player, rest_status)
                 ),
                 view=None,
             )

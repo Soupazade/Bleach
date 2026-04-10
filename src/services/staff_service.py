@@ -68,7 +68,8 @@ class PlayerDebugState:
     active_training: ActiveTraining | None
     active_travel: ActiveTravel | None
     rest_minutes: int
-    projected_rest_recovery: int
+    projected_rest_stamina_recovery: int
+    projected_rest_hp_recovery: int
 
 
 VALID_STAT_FIELDS = {"power", "defense", "speed", "reiatsu"}
@@ -332,6 +333,7 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
                         "is_resting": False,
                         "rest_start_time": None,
                         "rest_stamina_snapshot": None,
+                        "rest_hp_snapshot": None,
                         "stamina_updated_at": datetime.now(timezone.utc),
                     },
                 )
@@ -360,7 +362,7 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
     active_combat = await get_active_exploration_combat(pool, user_id)
     active_training = await get_active_training(pool, user_id)
     active_travel = await get_active_travel(pool, user_id)
-    rest_minutes, projected_rest_recovery = get_rest_status(player)
+    rest_status = get_rest_status(player)
     return PlayerDebugState(
         player=player,
         active_exploration=active_exploration,
@@ -368,6 +370,7 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
         active_combat=active_combat,
         active_training=active_training,
         active_travel=active_travel,
-        rest_minutes=rest_minutes,
-        projected_rest_recovery=projected_rest_recovery,
+        rest_minutes=rest_status.resting_minutes,
+        projected_rest_stamina_recovery=rest_status.recovered_stamina,
+        projected_rest_hp_recovery=rest_status.recovered_hp,
     )

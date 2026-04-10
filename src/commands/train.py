@@ -99,10 +99,10 @@ def register_train_command(bot: "BleachBot") -> None:
             return
 
         if player.is_resting:
-            rest_minutes, recovered_stamina = get_rest_status(player)
+            rest_status = get_rest_status(player)
             await interaction.response.send_message(
                 embed=build_training_resting_embed(
-                    build_resting_block_message(player, rest_minutes, recovered_stamina)
+                    build_resting_block_message(player, rest_status)
                 ),
             )
             return

@@ -25,6 +25,7 @@ from src.data.traits import roll_random_soul_trait
 from src.models.player import PlayerProfile
 from src.services.formulas import (
     calculate_minutes_elapsed,
+    calculate_rest_hp_recovery,
     calculate_passive_stamina_recovery,
     calculate_rest_stamina_recovery,
 )
@@ -55,6 +56,7 @@ PLAYER_PROFILE_COLUMNS = """
     is_resting,
     rest_start_time,
     rest_stamina_snapshot,
+    rest_hp_snapshot,
     stamina_updated_at,
     created_at
 """
@@ -65,6 +67,7 @@ class ResourceSyncResult:
     record: Record
     passive_stamina_gained: int = 0
     rest_stamina_gained: int = 0
+    rest_hp_gained: int = 0
     resting_minutes: int = 0
 
 
@@ -73,6 +76,13 @@ class TimedActivityWindow:
     activity_type: str
     start_time: datetime
     end_time: datetime
+
+
+@dataclass(slots=True)
+class RestStatus:
+    resting_minutes: int = 0
+    recovered_stamina: int = 0
+    recovered_hp: int = 0
 
 
 async def has_legacy_discord_user_id_column(connection: Connection) -> bool:
@@ -192,27 +202,46 @@ async def sync_player_record(
     record: Record,
 ) -> ResourceSyncResult:
     now = datetime.now(timezone.utc)
+    hp_current = int(record["hp_current"])
+    hp_max = int(record["hp_max"])
     stamina_current = int(record["stamina_current"])
     stamina_max = int(record["stamina_max"])
     updates: dict[str, Any] = {}
     passive_stamina_gained = 0
     rest_stamina_gained = 0
+    rest_hp_gained = 0
     resting_minutes = 0
 
     if bool(record["is_resting"]):
         rest_start_time = record["rest_start_time"] or now
-        rest_snapshot = record["rest_stamina_snapshot"]
-        if rest_snapshot is None:
-            rest_snapshot = stamina_current
-            updates["rest_stamina_snapshot"] = rest_snapshot
+        rest_stamina_snapshot = record["rest_stamina_snapshot"]
+        if rest_stamina_snapshot is None:
+            rest_stamina_snapshot = stamina_current
+            updates["rest_stamina_snapshot"] = rest_stamina_snapshot
+
+        rest_hp_snapshot = record["rest_hp_snapshot"]
+        if rest_hp_snapshot is None:
+            rest_hp_snapshot = hp_current
+            updates["rest_hp_snapshot"] = rest_hp_snapshot
 
         resting_minutes = calculate_minutes_elapsed(rest_start_time, now)
-        recovered_total = calculate_rest_stamina_recovery(resting_minutes)
-        new_stamina = min(stamina_max, int(rest_snapshot) + recovered_total)
-        rest_stamina_gained = new_stamina - int(rest_snapshot)
+        recovered_stamina_total = calculate_rest_stamina_recovery(resting_minutes)
+        recovered_hp_total = calculate_rest_hp_recovery(resting_minutes)
+        new_stamina = min(
+            stamina_max,
+            int(rest_stamina_snapshot) + recovered_stamina_total,
+        )
+        new_hp = min(
+            hp_max,
+            int(rest_hp_snapshot) + recovered_hp_total,
+        )
+        rest_stamina_gained = new_stamina - int(rest_stamina_snapshot)
+        rest_hp_gained = new_hp - int(rest_hp_snapshot)
 
         if new_stamina != stamina_current:
             updates["stamina_current"] = new_stamina
+        if new_hp != hp_current:
+            updates["hp_current"] = new_hp
 
         if rest_start_time != record["rest_start_time"]:
             updates["rest_start_time"] = rest_start_time
@@ -263,6 +292,7 @@ async def sync_player_record(
             record=updated_record,
             passive_stamina_gained=passive_stamina_gained,
             rest_stamina_gained=rest_stamina_gained,
+            rest_hp_gained=rest_hp_gained,
             resting_minutes=resting_minutes,
         )
 
@@ -270,6 +300,7 @@ async def sync_player_record(
         record=record,
         passive_stamina_gained=passive_stamina_gained,
         rest_stamina_gained=rest_stamina_gained,
+        rest_hp_gained=rest_hp_gained,
         resting_minutes=resting_minutes,
     )
 
@@ -341,12 +372,13 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                         is_resting,
                         rest_start_time,
                         rest_stamina_snapshot,
+                        rest_hp_snapshot,
                         stamina_updated_at
                     )
                     VALUES (
                         $1, $2, $3, $4, $5, $6, $7, $8, $9,
                         $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                        $19, $20, $21, $22, $23
+                        $19, $20, $21, $22, $23, $24
                     )
                     ON CONFLICT (user_id) DO NOTHING
                     RETURNING {PLAYER_PROFILE_COLUMNS}
@@ -371,6 +403,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                     DEFAULT_LOCATION_KEY,
                     0,
                     False,
+                    None,
                     None,
                     None,
                     datetime.now(timezone.utc),
@@ -400,12 +433,13 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                         is_resting,
                         rest_start_time,
                         rest_stamina_snapshot,
+                        rest_hp_snapshot,
                         stamina_updated_at
                     )
                     VALUES (
                         $1, $2, $3, $4, $5, $6, $7, $8, $9,
                         $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                        $19, $20, $21, $22
+                        $19, $20, $21, $22, $23
                     )
                     ON CONFLICT (user_id) DO NOTHING
                     RETURNING {PLAYER_PROFILE_COLUMNS}
@@ -431,6 +465,7 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
                     False,
                     None,
                     None,
+                    None,
                     datetime.now(timezone.utc),
                 )
 
@@ -445,34 +480,48 @@ async def create_player_profile(pool: Pool | None, user_id: int) -> tuple[Player
     return PlayerProfile.from_record(record), True
 
 
-def build_resting_block_message(player: PlayerProfile, rest_minutes: int, recovered_stamina: int) -> str:
+def build_resting_block_message(player: PlayerProfile, rest_status: RestStatus) -> str:
     return (
         "You are currently resting and must stop with `/rest` before using action commands.\n"
         f"Status: **Resting**\n"
-        f"Resting Since: **{rest_minutes} minute(s) ago**\n"
-        f"Projected Recovery: **+{recovered_stamina} stamina**"
+        f"Resting Since: **{rest_status.resting_minutes} minute(s) ago**\n"
+        f"Projected Recovery: **+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP**"
     )
 
 
-def get_rest_status(player: PlayerProfile) -> tuple[int, int]:
+def get_rest_status(player: PlayerProfile) -> RestStatus:
     if not player.is_resting or player.rest_start_time is None:
-        return 0, 0
+        return RestStatus()
 
     resting_minutes = calculate_minutes_elapsed(player.rest_start_time, datetime.now(timezone.utc))
-    rest_snapshot = player.rest_stamina_snapshot if player.rest_stamina_snapshot is not None else player.stamina_current
-    recovered_stamina = max(0, player.stamina_current - rest_snapshot)
-    return resting_minutes, recovered_stamina
+    rest_stamina_snapshot = (
+        player.rest_stamina_snapshot
+        if player.rest_stamina_snapshot is not None
+        else player.stamina_current
+    )
+    rest_hp_snapshot = (
+        player.rest_hp_snapshot
+        if player.rest_hp_snapshot is not None
+        else player.hp_current
+    )
+    recovered_stamina = max(0, player.stamina_current - rest_stamina_snapshot)
+    recovered_hp = max(0, player.hp_current - rest_hp_snapshot)
+    return RestStatus(
+        resting_minutes=resting_minutes,
+        recovered_stamina=recovered_stamina,
+        recovered_hp=recovered_hp,
+    )
 
 
-async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile | None, bool, int, int]:
+async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile | None, bool, RestStatus]:
     if pool is None:
-        return None, False, 0, 0
+        return None, False, RestStatus()
 
     async with pool.acquire() as connection:
         async with connection.transaction():
             sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
             if sync_result is None:
-                return None, False, 0, 0
+                return None, False, RestStatus()
 
             record = sync_result.record
             now = datetime.now(timezone.utc)
@@ -485,14 +534,18 @@ async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile
                         "is_resting": False,
                         "rest_start_time": None,
                         "rest_stamina_snapshot": None,
+                        "rest_hp_snapshot": None,
                         "stamina_updated_at": now,
                     },
                 )
                 return (
                     PlayerProfile.from_record(updated_record),
                     False,
-                    sync_result.rest_stamina_gained,
-                    sync_result.resting_minutes,
+                    RestStatus(
+                        resting_minutes=sync_result.resting_minutes,
+                        recovered_stamina=sync_result.rest_stamina_gained,
+                        recovered_hp=sync_result.rest_hp_gained,
+                    ),
                 )
 
             updated_record = await update_player_record(
@@ -502,7 +555,8 @@ async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile
                     "is_resting": True,
                     "rest_start_time": now,
                     "rest_stamina_snapshot": int(record["stamina_current"]),
+                    "rest_hp_snapshot": int(record["hp_current"]),
                     "stamina_updated_at": now,
                 },
             )
-            return PlayerProfile.from_record(updated_record), True, 0, 0
+            return PlayerProfile.from_record(updated_record), True, RestStatus()

@@ -107,15 +107,18 @@ def _build_profile_embed_shell(
 
 
 def _add_status_field(embed: discord.Embed, player: PlayerProfile) -> None:
-    rest_minutes, recovered_stamina = get_rest_status(player)
+    rest_status = get_rest_status(player)
 
     if player.is_resting:
         embed.add_field(
             name="Status Effect",
             value=build_explore_info_lines(
                 "✨ Status: Resting",
-                f"⏱ Resting Since: {rest_minutes} minute(s) ago",
-                f"⚡ Projected Recovery: +{recovered_stamina} stamina",
+                f"⏱ Resting Since: {rest_status.resting_minutes} minute(s) ago",
+                (
+                    "⚡ Projected Recovery: "
+                    f"+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP"
+                ),
             ),
             inline=False,
         )
@@ -179,7 +182,7 @@ def build_profile_embed(
     trait = player.trait_data
     location = player.location_data
     room_mention = format_location_room_reference(location)
-    rest_minutes, recovered_stamina = get_rest_status(player)
+    rest_status = get_rest_status(player)
     status_value = "Resting" if player.is_resting else "Available"
     reputation_label = get_location_reputation_label(player.location)
     reputation_title = get_location_reputation_title(player, player.location)
@@ -453,8 +456,11 @@ def build_profile_embed(
             name="Status Effect",
             value=build_explore_info_lines(
                 "✨ Resting",
-                f"⏱ Resting Since: {rest_minutes} minute(s) ago",
-                f"⚡ Projected Recovery: +{recovered_stamina} stamina",
+                f"⏱ Resting Since: {rest_status.resting_minutes} minute(s) ago",
+                (
+                    "⚡ Projected Recovery: "
+                    f"+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP"
+                ),
             ),
             inline=False,
         )

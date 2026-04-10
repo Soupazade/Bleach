@@ -393,11 +393,11 @@ class TravelView(discord.ui.View):
             return
 
         if result.status == "resting" and result.player is not None:
-            rest_minutes, recovered_stamina = get_rest_status(result.player)
+            rest_status = get_rest_status(result.player)
             self.stop()
             await interaction.response.edit_message(
                 embed=build_travel_resting_embed(
-                    build_resting_block_message(result.player, rest_minutes, recovered_stamina)
+                    build_resting_block_message(result.player, rest_status)
                 ),
                 view=None,
             )
