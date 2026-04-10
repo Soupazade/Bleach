@@ -167,7 +167,7 @@ def register_travel_command(bot: "BleachBot") -> None:
                 return
 
             await interaction.response.send_message(
-                embed=build_travel_resolution_posted_embed(),
+                embed=build_travel_resolution_posted_embed(resolution),
             )
             return
 

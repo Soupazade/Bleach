@@ -177,21 +177,42 @@ def build_travel_arrived_embed(resolution: TravelResolution) -> discord.Embed:
     return embed
 
 
-def build_travel_resolution_posted_embed() -> discord.Embed:
+def build_travel_resolution_posted_embed(resolution: TravelResolution | None = None) -> discord.Embed:
+    description = "Your travel had already finished, so I posted the arrival in the destination district."
+    if resolution is not None:
+        description = (
+            f"Your travel had already finished. You are now in **{resolution.destination_name}**.\n"
+            f"Head to {format_location_room_reference(resolution.player.location_data)} to keep moving there."
+        )
+
     embed = discord.Embed(
-        title="🧭 Previous Travel Posted",
-        description="Your travel had already finished, so I posted the arrival in the destination district.",
+        title="\U0001f9ed Previous Travel Posted",
+        description=description,
         color=get_explore_color("explore"),
     )
+    if resolution is not None:
+        embed.add_field(
+            name="Current State",
+            value=build_explore_info_lines(
+                f"\U0001f4cd Location: {resolution.destination_name}",
+                f"\U0001f553 Correct Room: {format_location_room_reference(resolution.player.location_data)}",
+                f"\u26a1 Stamina: **{resolution.player.stamina_current}/{resolution.player.stamina_max}**",
+            ),
+            inline=False,
+        )
     add_explore_divider(embed)
     return embed
+
 
 
 def build_travel_wrong_location_embed(player: PlayerProfile) -> discord.Embed:
     location = player.location_data
     embed = discord.Embed(
         title="🧭 Wrong District",
-        description="If you want to move, start from the district your soul is actually standing in.",
+        description=(
+            "Your location is already set somewhere else. "
+            "Go to the correct room first, then use `/travel` from there."
+        ),
         color=get_explore_color("combat"),
     )
     embed.add_field(
@@ -366,7 +387,7 @@ class TravelView(discord.ui.View):
                 return
 
             await interaction.response.edit_message(
-                embed=build_travel_resolution_posted_embed(),
+                embed=build_travel_resolution_posted_embed(resolution),
                 view=None,
             )
             return
@@ -478,3 +499,4 @@ class TravelView(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass
+

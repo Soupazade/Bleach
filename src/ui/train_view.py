@@ -630,7 +630,7 @@ class TrainingSetupView(discord.ui.View):
 
             resolution = await resolve_and_post_travel(self.bot, interaction.user.id)
             await interaction.message.edit(
-                embed=build_travel_resolution_posted_embed() if resolution is not None else build_training_blocked_embed(
+                embed=build_travel_resolution_posted_embed(resolution) if resolution is not None else build_training_blocked_embed(
                     "🏋 Travel Resolution Failed",
                     "The trip ended, but I could not settle the arrival cleanly just yet.",
                     kind="combat",
