@@ -27,7 +27,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         title="Warm Broth",
         description="A cookfire widow presses a hot bowl into your hands. The heat reaches deeper than the soup should.",
         effect_type="stamina_flat",
-        magnitude=12,
+        magnitude=5,
     ),
     ExploreEffectTemplate(
         key="street_brew",
@@ -42,7 +42,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         title="Full Belly",
         description="You manage a real meal instead of scraps. It is not much by Seireitei standards, but it is enough to sharpen the next few runs.",
         effect_type="xp_boost_pct",
-        magnitude=10,
+        magnitude=25,
         remaining_explores=2,
     ),
     ExploreEffectTemplate(
@@ -51,7 +51,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="A rough hand clasps your shoulder before you part ways. The words are short. The fire they leave behind is not.",
         effect_type="power_pct",
         magnitude=15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="scrap_wrappings",
@@ -59,7 +59,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="Someone who has seen too many alley fights shows you how to bind the weak points under your clothes.",
         effect_type="defense_pct",
         magnitude=15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="shortcut_feet",
@@ -67,7 +67,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="A local points out a cleaner line through the district. Suddenly your steps know where not to die.",
         effect_type="speed_pct",
         magnitude=15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="quiet_focus",
@@ -75,7 +75,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="A brief moment of stillness lets your breathing settle and your reiatsu stop spilling in all directions.",
         effect_type="reiatsu_pct",
         magnitude=15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="bandaged_up",
@@ -83,7 +83,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="A careful stranger patches you with cleaner cloth than these streets usually offer. You feel steadier for it.",
         effect_type="hp_pct",
         magnitude=15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
     ExploreEffectTemplate(
         key="soul_drops",
@@ -91,7 +91,7 @@ POSITIVE_EXPLORE_EFFECTS = (
         description="A cheap little tonic steadies the spiritual ache behind your eyes and leaves your reserves brighter.",
         effect_type="mana_pct",
         magnitude=15,
-        duration_minutes=20,
+        duration_minutes=60,
     ),
 )
 
@@ -101,7 +101,7 @@ NEGATIVE_EXPLORE_EFFECTS = (
         title="Bad Skewers",
         description="You eat because hungry souls do not get to be picky. A few minutes later, your stomach makes you regret it.",
         effect_type="stamina_flat",
-        magnitude=-12,
+        magnitude=-5,
     ),
     ExploreEffectTemplate(
         key="ash_lungs",
