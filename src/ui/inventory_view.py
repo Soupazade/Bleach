@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import discord
 
+from src.data.items import ItemDefinition
 from src.models.inventory import PlayerInventoryItem
 from src.models.player import PlayerProfile
 from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
@@ -9,16 +10,18 @@ from src.ui.explore_embed_style import add_explore_divider, build_explore_info_l
 
 
 def _format_inventory_entry(item: PlayerInventoryItem) -> str:
-    detail_bits = [
-        f"Type: {item.item_type.replace('_', ' ').title()}",
-        f"Rarity: {item.rarity.replace('_', ' ').title()}",
-    ]
+    detail_bits = [f"Type: {item.item_type.replace('_', ' ').title()}"]
+    rarity_label = item.rarity.replace("_", " ").title()
+    if item.rarity.lower() != "common":
+        detail_bits.append(f"Rarity: {rarity_label}")
     if item.source_text:
         detail_bits.append(f"Source: {item.source_text}")
 
     lines = [f"**x{item.quantity} {item.item_name}**"]
     if item.item_description:
         lines.append(item.item_description)
+    if item.item_key == "bandages":
+        lines.append("Use with `/use` to restore 25% HP outside combat.")
     lines.append(" | ".join(detail_bits))
     return "\n".join(lines)
 
@@ -59,7 +62,7 @@ def build_inventory_embed(
         title="🎒 Soul Record — Inventory",
         description=(
             "Everything you managed to keep, hide, or drag out of the district ends up here. "
-            "It is not much yet, but even scraps matter in Rukongai."
+            "In Rukongai, what stays in your hands matters almost as much as what stays in your lungs."
         ),
         color=get_explore_color("explore"),
     )
@@ -72,18 +75,20 @@ def build_inventory_embed(
         name="Current State",
         value=build_explore_info_lines(
             f"📍 Location: {player.location_data.name}",
+            f"❤️ HP: {player.hp_current}/{player.hp_max}",
+            f"🔷 Mana: {player.mana_current}/{player.mana_max}",
+            f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
             f"📈 Level: {player.level}",
             f"🎭 {reputation_label}: {reputation_title}",
-            f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
         ),
         inline=False,
     )
     embed.add_field(
-        name="Inventory Overview",
+        name="Bag State",
         value=build_explore_info_lines(
             f"🎒 Item Stacks: {len(items)}",
             f"📦 Total Quantity: {total_quantity}",
-            "More item systems can plug into this cleanly later.",
+            "Use `/use` on consumables once real supplies start piling up.",
         ),
         inline=False,
     )
@@ -99,7 +104,7 @@ def build_inventory_embed(
             ),
             inline=False,
         )
-        embed.set_footer(text="Even an empty bag matters once the streets start paying out.")
+        embed.set_footer(text="Even an empty bag starts feeling heavy once the district teaches you what you need.")
         return embed
 
     preview_items = items[:10]
@@ -115,5 +120,82 @@ def build_inventory_embed(
             value=f"And {remaining_items} more stack(s) are packed into the record.",
             inline=False,
         )
-    embed.set_footer(text="What survives the streets has value, even before the systems around it grow.")
+    embed.set_footer(text="What survives the streets has value long before anyone calls it treasure.")
+    return embed
+
+
+def build_item_use_unavailable_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="🩹 Item Use Unavailable",
+        description="The inventory records are out of reach right now. Try again when the shelves settle.",
+        color=get_explore_color("combat"),
+    )
+    add_explore_divider(embed)
+    return embed
+
+
+def build_item_use_blocked_embed(title: str, description: str, *, kind: str = "combat") -> discord.Embed:
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=get_explore_color(kind),
+    )
+    add_explore_divider(embed)
+    return embed
+
+
+def build_item_use_empty_embed(
+    *,
+    player: PlayerProfile,
+    item_definition: ItemDefinition,
+    reason: str,
+) -> discord.Embed:
+    embed = discord.Embed(
+        title=f"🩹 {item_definition.name}",
+        description=reason,
+        color=get_explore_color("flavor"),
+    )
+    embed.add_field(
+        name="Current State",
+        value=build_explore_info_lines(
+            f"❤️ HP: {player.hp_current}/{player.hp_max}",
+            f"🔷 Mana: {player.mana_current}/{player.mana_max}",
+            f"⚡ Stamina: {player.stamina_current}/{player.stamina_max}",
+        ),
+        inline=False,
+    )
+    add_explore_divider(embed)
+    return embed
+
+
+def build_item_use_success_embed(
+    *,
+    player: PlayerProfile,
+    item_definition: ItemDefinition,
+    healed_amount: int,
+    quantity_remaining: int,
+) -> discord.Embed:
+    embed = discord.Embed(
+        title=f"🩹 {item_definition.name} Used",
+        description=(
+            "You work the wraps tight, slow your breathing, and get the worst of the damage back under control."
+        ),
+        color=get_explore_color("reward"),
+    )
+    embed.add_field(
+        name="What Changed",
+        value=build_explore_info_lines(
+            f"❤️ HP Restored: {healed_amount}",
+            f"❤️ Current HP: {player.hp_current}/{player.hp_max}",
+            f"🎒 Remaining: {quantity_remaining}",
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Item Effect",
+        value="Bandages restore **25% of your max HP** outside combat.",
+        inline=False,
+    )
+    add_explore_divider(embed)
+    embed.set_footer(text="Even rough treatment is better than bleeding into the dirt.")
     return embed

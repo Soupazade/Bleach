@@ -6,12 +6,14 @@ from src.commands.staff import register_staff_commands
 from src.commands.start import register_start_command
 from src.commands.train import register_train_command
 from src.commands.travel import register_travel_command
+from src.commands.use import register_use_command
 
 
 def register_commands(bot) -> None:
     register_start_command(bot)
     register_profile_command(bot)
     register_inventory_command(bot)
+    register_use_command(bot)
     register_explore_command(bot)
     register_train_command(bot)
     register_travel_command(bot)
