@@ -39,6 +39,7 @@ from src.services.combat.types import (
     CombatSession,
 )
 from src.services.effect_service import EffectiveCombatSnapshot, build_effective_combat_snapshot, list_active_player_effects_for_connection
+from src.services.inventory_service import consume_inventory_item_for_connection
 from src.services.player_service import get_or_sync_player_record, update_player_record
 from src.services.role_service import sync_member_location_role
 from src.services.status_service import grant_wounded_status
@@ -53,11 +54,12 @@ COMBAT_TURN_TIMEOUT = timedelta(minutes=2)
 
 @dataclass(slots=True)
 class CombatAdvanceResult:
-    status: Literal["missing", "updated", "resolved"]
+    status: Literal["missing", "blocked", "updated", "resolved"]
     combat: CombatSession | None = None
     resolution: "ExplorationResolution | None" = None
     fight_embed: discord.Embed | None = None
     blackout_applied: bool = False
+    message: str | None = None
 
 
 @dataclass(slots=True)
@@ -252,6 +254,35 @@ async def _advance_combat(
             if session.user_id != user_id:
                 return CombatAdvanceResult(status="missing")
 
+            if choice.action == "bandage":
+                if session.player.hp_current >= session.player.hp_max:
+                    return CombatAdvanceResult(
+                        status="blocked",
+                        combat=session,
+                        message="Your HP is already full. Save the bandages for when the street actually opens you up.",
+                    )
+                consumed = await consume_inventory_item_for_connection(
+                    connection,
+                    user_id=user_id,
+                    item_key="bandages",
+                    quantity=1,
+                )
+                if consumed <= 0:
+                    return CombatAdvanceResult(
+                        status="blocked",
+                        combat=session,
+                        message="You reach for a bandage, but your hands come up empty.",
+                    )
+                bandage_heal = max(1, int(round(session.player.hp_max * 0.25)))
+                session = replace(
+                    session,
+                    player=replace(
+                        session.player,
+                        hp_current=min(session.player.hp_max, session.player.hp_current + bandage_heal),
+                    ),
+                )
+                choice = CombatChoice(action="bandage", reason=f"Bandage restores {bandage_heal} HP.")
+
             round_outcome = resolve_combat_round(session, choice)
             updated_session = round_outcome.session
             if round_outcome.timed_out:
@@ -369,6 +400,8 @@ async def _post_active_combat_message(
     rebound = await bind_combat_message(bot.db_pool, fight_id=combat.fight_id, message_id=message.id)
     if rebound is None:
         return None
+    if combat.source_kind == "exploration":
+        bot.exploration_message_refs[combat.user_id] = message.id
     schedule_combat_task(bot, rebound)
     return rebound
 
@@ -382,6 +415,7 @@ async def resolve_and_post_combat_action(
     ability_key: str | None = None,
     old_message: discord.Message | None = None,
 ) -> CombatAdvanceResult:
+    bot.combat_warning_rounds.pop(user_id, None)
     result = await _advance_combat(
         bot.db_pool,
         message_id=message_id,
@@ -390,6 +424,8 @@ async def resolve_and_post_combat_action(
     )
     if result.status == "updated" and result.combat is not None:
         await _post_active_combat_message(bot, result.combat, old_message=old_message)
+        return result
+    if result.status == "blocked":
         return result
     if result.status == "resolved" and result.resolution is not None:
         await _disable_old_combat_message(old_message)
@@ -404,12 +440,21 @@ async def resolve_and_post_combat_action(
                 await _sync_blackout_location_role(bot, result.combat.user_id)
         return result
     if result.status == "resolved" and result.fight_embed is not None and result.combat is not None:
-        await _disable_old_combat_message(old_message)
-        channel = None if old_message is None else old_message.channel
-        if channel is None:
+        if old_message is not None:
+            try:
+                await old_message.edit(
+                    content=f"<@{result.combat.user_id}>",
+                    embed=result.fight_embed,
+                    view=None,
+                )
+            except discord.HTTPException:
+                channel = old_message.channel
+                if hasattr(channel, "send"):
+                    await channel.send(content=f"<@{result.combat.user_id}>", embed=result.fight_embed)
+        else:
             channel = bot.get_channel(result.combat.channel_id)
-        if channel is not None and hasattr(channel, "send"):
-            await channel.send(content=f"<@{result.combat.user_id}>", embed=result.fight_embed)
+            if channel is not None and hasattr(channel, "send"):
+                await channel.send(content=f"<@{result.combat.user_id}>", embed=result.fight_embed)
         if result.blackout_applied:
             await _sync_blackout_location_role(bot, result.combat.user_id)
         return result
@@ -452,6 +497,35 @@ async def _run_combat_task(bot: "BleachBot", user_id: int, fight_id: int) -> Non
             if combat is None or combat.fight_id != fight_id:
                 break
             delay = (combat.turn_deadline_at - datetime.now(timezone.utc)).total_seconds()
+            warned_round = bot.combat_warning_rounds.get(user_id)
+            if delay > 60 and warned_round != combat.round_number:
+                await asyncio.sleep(delay - 60)
+                combat = await get_active_combat(bot.db_pool, user_id)
+                if combat is None or combat.fight_id != fight_id:
+                    break
+                if combat.turn_deadline_at <= datetime.now(timezone.utc):
+                    continue
+                if bot.combat_warning_rounds.get(user_id) != combat.round_number:
+                    channel = bot.get_channel(combat.channel_id)
+                    if channel is None:
+                        try:
+                            channel = await bot.fetch_channel(combat.channel_id)
+                        except discord.HTTPException:
+                            channel = None
+                    if channel is not None and hasattr(channel, "send"):
+                        try:
+                            await channel.send(
+                content=f"<@{combat.user_id}>",
+                embed=discord.Embed(
+                    title="Turn Warning",
+                    description="If you do not act within **1 minute**, your turn will be skipped.",
+                    color=discord.Color.orange(),
+                ),
+            )
+                        except discord.HTTPException:
+                            pass
+                    bot.combat_warning_rounds[user_id] = combat.round_number
+                continue
             if delay > 0:
                 await asyncio.sleep(delay + 0.25)
             combat = await get_active_combat(bot.db_pool, user_id)
@@ -473,6 +547,7 @@ async def _run_combat_task(bot: "BleachBot", user_id: int, fight_id: int) -> Non
         logging.exception("Unexpected combat task failure for user %s.", user_id)
     finally:
         bot.combat_tasks.pop(user_id, None)
+        bot.combat_warning_rounds.pop(user_id, None)
 
 
 def schedule_combat_task(bot: "BleachBot", combat: CombatSession) -> None:
@@ -550,7 +625,7 @@ async def start_fight_test(
                 source_kind="fighttest",
                 location=player.location,
                 approach="fighttest",
-                encounter_title="Combat Test - Generic Level 1 Bandit",
+                encounter_title=f"Combat Test - {enemy.name}",
                 encounter_description="A live combat drill snaps into place so you can test the system under pressure.",
                 resolution_title="You Put the Bandit Down",
                 resolution_description="The test fight settles cleanly. You stay standing, the bandit does not, and the system has another round of data to chew on.",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import random
 
 
@@ -23,105 +23,111 @@ class CombatEnemyTemplate:
     attack_bias: int = 90
     guard_bias: int = 10
     ability_bias: int = 0
+    name_pool: tuple[str, ...] = ()
 
 
 GENERIC_LEVEL_ONE_BANDIT = CombatEnemyTemplate(
     key="generic_bandit_l1",
-    name="Generic Level 1 Bandit",
+    name="Rukongai Drifter",
     level=1,
     race="Soul",
     rank="Street Thug",
-    hp=150,
-    mana=50,
-    power=5,
-    defense=5,
-    speed=5,
-    reiatsu=5,
-    reward_xp_win=15,
-    reward_xp_lose=5,
+    hp=85,
+    mana=35,
+    power=1,
+    defense=1,
+    speed=1,
+    reiatsu=1,
+    reward_xp_win=10,
+    reward_xp_lose=4,
     abilities=(),
     attack_bias=90,
     guard_bias=10,
+    name_pool=("Suzu", "Toma", "Kenta", "Nobu", "Shin", "Mako"),
 )
 
 GENERIC_LEVEL_THREE_BANDIT = CombatEnemyTemplate(
     key="generic_bandit_l3",
-    name="Generic Level 3 Bandit",
+    name="Rukongai Scrapper",
     level=3,
     race="Soul",
     rank="Scrapper",
-    hp=155,
+    hp=120,
     mana=65,
-    power=8,
-    defense=7,
-    speed=7,
-    reiatsu=7,
-    reward_xp_win=22,
-    reward_xp_lose=7,
+    power=4,
+    defense=3,
+    speed=3,
+    reiatsu=3,
+    reward_xp_win=18,
+    reward_xp_lose=6,
     abilities=("heavy_strike",),
-    attack_bias=80,
+    attack_bias=78,
     guard_bias=10,
-    ability_bias=10,
+    ability_bias=12,
+    name_pool=("Daigo", "Rikka", "Hayate", "Isamu", "Kuro", "Seina"),
 )
 
 GENERIC_LEVEL_FIVE_BANDIT = CombatEnemyTemplate(
     key="generic_bandit_l5",
-    name="Generic Level 5 Bandit",
+    name="Rukongai Cutthroat",
     level=5,
     race="Soul",
     rank="Cutthroat",
-    hp=185,
+    hp=155,
     mana=95,
-    power=11,
-    defense=10,
-    speed=10,
-    reiatsu=10,
-    reward_xp_win=32,
-    reward_xp_lose=10,
+    power=7,
+    defense=5,
+    speed=5,
+    reiatsu=5,
+    reward_xp_win=28,
+    reward_xp_lose=9,
     abilities=("heavy_strike", "multi_strike"),
-    attack_bias=72,
+    attack_bias=70,
     guard_bias=10,
-    ability_bias=18,
+    ability_bias=20,
+    name_pool=("Tetsu", "Arata", "Ginji", "Kazane", "Rinzo", "Sabi"),
 )
 
 GENERIC_LEVEL_SEVEN_BANDIT = CombatEnemyTemplate(
     key="generic_bandit_l7",
-    name="Generic Level 7 Bandit",
+    name="Rukongai Enforcer",
     level=7,
     race="Soul",
     rank="Enforcer",
-    hp=225,
+    hp=205,
     mana=125,
-    power=15,
-    defense=13,
-    speed=13,
-    reiatsu=13,
-    reward_xp_win=44,
-    reward_xp_lose=14,
+    power=10,
+    defense=7,
+    speed=7,
+    reiatsu=7,
+    reward_xp_win=40,
+    reward_xp_lose=13,
     abilities=("heavy_strike", "multi_strike", "cleaving_slash"),
-    attack_bias=65,
+    attack_bias=62,
     guard_bias=10,
-    ability_bias=25,
+    ability_bias=28,
+    name_pool=("Kogarashi", "Raika", "Shigure", "Tobio", "Jinbei", "Akane"),
 )
 
 GENERIC_LEVEL_TEN_BANDIT = CombatEnemyTemplate(
     key="generic_bandit_l10",
-    name="Generic Level 10 Bandit",
+    name="Rukongai Bandit Captain",
     level=10,
     race="Soul",
     rank="Bandit Captain",
-    hp=280,
+    hp=260,
     mana=160,
-    power=20,
-    defense=17,
-    speed=17,
-    reiatsu=17,
-    reward_xp_win=60,
+    power=14,
+    defense=10,
+    speed=10,
+    reiatsu=10,
+    reward_xp_win=58,
     reward_xp_lose=18,
     abilities=("heavy_strike", "multi_strike", "cleaving_slash"),
-    attack_bias=58,
+    attack_bias=55,
     guard_bias=10,
-    ability_bias=32,
+    ability_bias=35,
+    name_pool=("Kurohane", "Raizen", "Sanjuro", "Goryu", "Mizuchi", "Kagemaru"),
 )
 
 
@@ -134,6 +140,12 @@ ENEMY_TIERS: tuple[CombatEnemyTemplate, ...] = (
 )
 
 
+def _with_random_name(template: CombatEnemyTemplate) -> CombatEnemyTemplate:
+    if not template.name_pool:
+        return template
+    return replace(template, name=random.choice(template.name_pool))
+
+
 def get_enemy_for_exploration_combat(
     location_key: str,
     *,
@@ -143,4 +155,5 @@ def get_enemy_for_exploration_combat(
 ) -> CombatEnemyTemplate:
     del location_key, encounter_title, approach_risk
     eligible = [enemy for enemy in ENEMY_TIERS if enemy.level <= max(1, player_level)]
-    return random.choice(eligible or [GENERIC_LEVEL_ONE_BANDIT])
+    chosen = random.choice(eligible or [GENERIC_LEVEL_ONE_BANDIT])
+    return _with_random_name(chosen)

@@ -66,6 +66,7 @@ class BleachBot(discord.Client):
         self.exploration_tasks: dict[int, asyncio.Task] = {}
         self.exploration_message_refs: dict[int, int] = {}
         self.combat_tasks: dict[int, asyncio.Task] = {}
+        self.combat_warning_rounds: dict[int, int] = {}
         self.training_tasks: dict[int, asyncio.Task] = {}
         self.travel_tasks: dict[int, asyncio.Task] = {}
         self.recent_combat_resolutions: dict[int, object] = {}
@@ -119,6 +120,7 @@ class BleachBot(discord.Client):
         self.exploration_tasks.clear()
         self.exploration_message_refs.clear()
         self.combat_tasks.clear()
+        self.combat_warning_rounds.clear()
         self.training_tasks.clear()
         self.travel_tasks.clear()
         if self.db_pool is not None:

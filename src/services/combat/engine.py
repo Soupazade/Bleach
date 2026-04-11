@@ -170,6 +170,8 @@ def _player_action_label(choice: CombatChoice) -> str:
         return "Strike"
     if choice.action == "guard":
         return "Guard"
+    if choice.action == "bandage":
+        return "Bandage"
     if choice.action == "retreat":
         return "Retreat"
     if choice.action == "afk_skip":
@@ -177,6 +179,12 @@ def _player_action_label(choice: CombatChoice) -> str:
     if choice.ability_key is not None:
         return get_combat_ability(choice.ability_key).name
     return "Ability"
+
+
+def _compose_round_summary(player_lines: list[str], enemy_lines: list[str]) -> str:
+    player_text = "\n".join(f"- {line}" for line in player_lines) if player_lines else "- Waiting on your move."
+    enemy_text = "\n".join(f"- {line}" for line in enemy_lines) if enemy_lines else "- The enemy is reading you."
+    return f"**Your Turn**\n{player_text}\n\n**Enemy Turn**\n{enemy_text}"
 
 
 def _append_hit_breakdown(detail_lines: list[str], heading: str, details: dict[str, object]) -> None:
@@ -218,7 +226,8 @@ def resolve_combat_round(
         f"Player Action: {_player_action_label(player_choice)}",
         f"Player Before: {_format_stats_line(player)}",
     ]
-    summary_parts: list[str] = []
+    player_summary_parts: list[str] = []
+    enemy_summary_parts: list[str] = []
     payload: dict[str, object] = {
         "player_action": {"action": player_choice.action, "ability_key": player_choice.ability_key},
         "events": [],
@@ -228,7 +237,9 @@ def resolve_combat_round(
         detail_lines.append(f"Enemy Before: {_format_stats_line(enemy)}")
 
     if player_choice.action == "retreat" and player.cooldowns.get("retreat", 0) > 0:
-        player_choice = CombatChoice(action="afk_skip", reason="Retreat on cooldown")
+        player_summary_parts.append("Retreat is still on cooldown, so you hold your ground instead.")
+        detail_lines.append(f"Retreat blocked: cooldown {player.cooldowns['retreat']}")
+        player_choice = CombatChoice(action="guard", reason="Retreat on cooldown")
 
     player_guarding = player_choice.action == "guard"
     player_was_hit = False
@@ -245,7 +256,7 @@ def resolve_combat_round(
             "roll_pct": round(retreat_roll * 100, 2),
         }
         if retreat_roll <= retreat_chance:
-            summary_parts.append("You find one narrow opening and break away clean.")
+            player_summary_parts.append("You find one narrow opening and break away clean.")
             detail_lines.append(
                 f"Retreat: success with roll {round(retreat_roll * 100, 2)} <= {round(retreat_chance * 100, 2)}"
             )
@@ -255,13 +266,13 @@ def resolve_combat_round(
                 session,
                 player=player,
                 enemies=tuple(enemies),
-                last_round_summary=" ".join(summary_parts),
+                last_round_summary=_compose_round_summary(player_summary_parts, enemy_summary_parts),
             )
             return CombatRoundOutcome(
                 session=updated_session,
                 log_event=CombatLogEvent(
                     turn_number=session.round_number,
-                    summary_text=" ".join(summary_parts),
+                    summary_text=_compose_round_summary(player_summary_parts, enemy_summary_parts),
                     detail_text="\n".join(detail_lines),
                     payload=payload,
                 ),
@@ -270,7 +281,7 @@ def resolve_combat_round(
                 resolution_description=f"You break away from **{session.enemy_name}** before the alley can swallow the whole fight.",
                 xp_reward=session.reward_xp_lose,
             )
-        summary_parts.append("You try to break away, but the enemy stays on you.")
+        player_summary_parts.append("You try to break away, but the enemy stays on you.")
         detail_lines.append(
             f"Retreat: failed with roll {round(retreat_roll * 100, 2)} > {round(retreat_chance * 100, 2)}"
         )
@@ -291,12 +302,16 @@ def resolve_combat_round(
         if not alive_enemies:
             return
         if action_choice.action == "afk_skip":
-            summary_parts.append("You lose the turn to hesitation.")
+            player_summary_parts.append("You lose the turn to hesitation.")
             detail_lines.append(f"Turn skipped: {action_choice.reason or 'no action selected'}")
             return
         if action_choice.action == "guard":
-            summary_parts.append("You brace yourself behind a guarded stance.")
+            player_summary_parts.append("You brace yourself behind a guarded stance.")
             detail_lines.append("Player chooses Guard.")
+            return
+        if action_choice.action == "bandage":
+            player_summary_parts.append(action_choice.reason or "You tighten a bandage and steal a breath.")
+            detail_lines.append(f"Player uses bandage: {action_choice.reason or 'healed'}")
             return
         if action_choice.action == "retreat":
             return
@@ -310,7 +325,7 @@ def resolve_combat_round(
                 power_multiplier=1.0,
             )
             enemies = [updated_target if enemy.entity_id == updated_target.entity_id else enemy for enemy in enemies]
-            summary_parts.append(text)
+            player_summary_parts.append(text)
             _append_hit_breakdown(detail_lines, "Player Strike", details)
             payload["events"].append({"kind": "player_strike", "target": target.entity_id, "details": details})
             return
@@ -318,22 +333,22 @@ def resolve_combat_round(
         if action_choice.action == "ability" and action_choice.ability_key is not None:
             ability = get_combat_ability(action_choice.ability_key)
             if player.level < ability.unlock_level:
-                summary_parts.append(f"You reach for {ability.name}, but you are not ready for it yet.")
+                player_summary_parts.append(f"You reach for {ability.name}, but you are not ready for it yet.")
                 detail_lines.append(f"Ability blocked: level {player.level} < unlock {ability.unlock_level}")
                 return
             if player.cooldowns.get(ability.key, 0) > 0:
-                summary_parts.append(f"{ability.name} is still cooling down.")
+                player_summary_parts.append(f"{ability.name} is still cooling down.")
                 detail_lines.append(f"Ability blocked: cooldown {player.cooldowns[ability.key]}")
                 return
             if player.mana_current < ability.mana_cost:
-                summary_parts.append(f"You do not have enough mana for {ability.name}.")
+                player_summary_parts.append(f"You do not have enough mana for {ability.name}.")
                 detail_lines.append(f"Ability blocked: mana {player.mana_current} < {ability.mana_cost}")
                 return
 
             player = replace(player, mana_current=player.mana_current - ability.mana_cost)
             player.cooldowns[ability.key] = ability.cooldown_turns
             target_pool = _alive_enemies(enemies) if ability.targeting == "all" else [_alive_enemies(enemies)[0]]
-            summary_parts.append(f"You unleash **{ability.name}**.")
+            player_summary_parts.append(f"You unleash **{ability.name}**.")
             detail_lines.append(
                 f"Ability cast: {ability.name} mana_cost={ability.mana_cost} cooldown={ability.cooldown_turns}"
             )
@@ -348,7 +363,7 @@ def resolve_combat_round(
                         power_multiplier=ability.power_multiplier,
                     )
                     current_target = updated_target
-                    summary_parts.append(text)
+                    player_summary_parts.append(text)
                     _append_hit_breakdown(detail_lines, f"Ability {ability.name} hit {hit_index + 1}", details)
                     payload["events"].append(
                         {
@@ -367,7 +382,7 @@ def resolve_combat_round(
         for enemy in _alive_enemies(enemies):
             enemy_choice = enemy_choices[enemy.entity_id]
             if enemy_choice.action == "guard":
-                summary_parts.append(f"**{enemy.name}** guards and waits for an opening.")
+                enemy_summary_parts.append(f"**{enemy.name}** guards and waits for an opening.")
                 detail_lines.append(f"{enemy.name} chooses Guard.")
                 continue
             if enemy_choice.action == "ability" and enemy_choice.ability_key is not None:
@@ -378,7 +393,7 @@ def resolve_combat_round(
                     cooldowns={**enemy.cooldowns, ability.key: ability.cooldown_turns},
                 )
                 enemies = [enemy if candidate.entity_id == enemy.entity_id else candidate for candidate in enemies]
-                summary_parts.append(f"**{enemy.name}** uses **{ability.name}**.")
+                enemy_summary_parts.append(f"**{enemy.name}** uses **{ability.name}**.")
                 detail_lines.append(
                     f"Enemy ability: {enemy.name} casts {ability.name} mana_cost={ability.mana_cost} cooldown={ability.cooldown_turns}"
                 )
@@ -406,7 +421,7 @@ def resolve_combat_round(
                             )
                             enemy = updated_enemy
                             enemies = [enemy if candidate.entity_id == enemy.entity_id else candidate for candidate in enemies]
-                            summary_parts.append(counter_text)
+                            player_summary_parts.append(counter_text)
                             _append_hit_breakdown(detail_lines, "Guard Counter", counter_details)
                             payload["events"].append(
                                 {"kind": "guard_counter", "target": enemy.entity_id, "details": counter_details}
@@ -415,7 +430,7 @@ def resolve_combat_round(
                     elif hit_landed:
                         player_was_hit = True
                     player = updated_player
-                    summary_parts.append(text)
+                    enemy_summary_parts.append(text)
                     _append_hit_breakdown(detail_lines, f"Enemy Ability | {enemy.name} | {ability.name} | Hit {hit_index + 1}", details)
                     payload["events"].append(
                         {
@@ -450,14 +465,14 @@ def resolve_combat_round(
                         power_multiplier=2.0,
                     )
                     enemies = [updated_enemy if candidate.entity_id == updated_enemy.entity_id else candidate for candidate in enemies]
-                    summary_parts.append(counter_text)
+                    player_summary_parts.append(counter_text)
                     _append_hit_breakdown(detail_lines, "Guard Counter", counter_details)
                     payload["events"].append({"kind": "guard_counter", "target": enemy.entity_id, "details": counter_details})
                 player_was_hit = True
             elif hit_landed:
                 player_was_hit = True
             player = updated_player
-            summary_parts.append(text)
+            enemy_summary_parts.append(text)
             _append_hit_breakdown(detail_lines, f"Enemy Action | {enemy.name}", details)
             payload["events"].append({"kind": "enemy_action", "enemy": enemy.entity_id, "details": details})
             if player.hp_current <= 0:
@@ -466,18 +481,28 @@ def resolve_combat_round(
     if player_acts_first:
         _resolve_player_action_once(player_choice)
         if player_bonus_turn and player_choice.action in {"strike", "ability"} and _alive_enemies(enemies):
-            summary_parts.append("Speed opens a second window before the enemy can reset.")
+            player_summary_parts.append("Speed opens a second window before the enemy can reset.")
             detail_lines.append("Bonus turn consumed: player follow-up")
             _resolve_player_action_once(player_choice)
         if not _alive_enemies(enemies):
             player, mana_restored = _regen_mana(player, guarded_breathing=player_guarding and not player_was_hit)
             if player_guarding and not player_was_hit and mana_restored > 0:
-                summary_parts.append("Your guard holds clean, and a quiet breath pulls a little reiatsu back into place.")
+                player_summary_parts.append("Your guard holds clean, and a quiet breath pulls a little reiatsu back into place.")
             detail_lines.append(f"End-turn mana regen: +{mana_restored}")
-            updated_session = replace(session, player=player, enemies=tuple(enemies), last_round_summary=" ".join(summary_parts))
+            updated_session = replace(
+                session,
+                player=player,
+                enemies=tuple(enemies),
+                last_round_summary=_compose_round_summary(player_summary_parts, enemy_summary_parts),
+            )
             return CombatRoundOutcome(
                 session=updated_session,
-                log_event=CombatLogEvent(session.round_number, " ".join(summary_parts), "\n".join(detail_lines), payload),
+                log_event=CombatLogEvent(
+                    session.round_number,
+                    _compose_round_summary(player_summary_parts, enemy_summary_parts),
+                    "\n".join(detail_lines),
+                    payload,
+                ),
                 resolution_type="victory",
                 resolution_title=session.resolution_title,
                 resolution_description=session.resolution_description,
@@ -489,7 +514,7 @@ def resolve_combat_round(
         if player.hp_current > 0:
             _resolve_player_action_once(player_choice)
             if player_bonus_turn and player_choice.action in {"strike", "ability"} and _alive_enemies(enemies):
-                summary_parts.append("Speed steals a follow-up before the enemy can settle.")
+                player_summary_parts.append("Speed steals a follow-up before the enemy can settle.")
                 detail_lines.append("Bonus turn consumed: player follow-up")
                 _resolve_player_action_once(player_choice)
 
@@ -497,7 +522,7 @@ def resolve_combat_round(
     enemies = [replace(enemy, cooldowns=_decrement_cooldowns(enemy.cooldowns)) for enemy in enemies]
     player, mana_restored = _regen_mana(player, guarded_breathing=player_guarding and not player_was_hit)
     if player_guarding and not player_was_hit and mana_restored > 0:
-        summary_parts.append("Your guard buys a small break, and your reiatsu steadies on the inhale.")
+        player_summary_parts.append("Your guard buys a small break, and your reiatsu steadies on the inhale.")
     detail_lines.append(f"Cooldowns after turn: {player.cooldowns}")
     for enemy in enemies:
         if enemy.cooldowns:
@@ -524,11 +549,16 @@ def resolve_combat_round(
         player=player,
         enemies=tuple(enemies),
         round_number=session.round_number + (0 if resolution_type is not None else 1),
-        last_round_summary=" ".join(summary_parts),
+        last_round_summary=_compose_round_summary(player_summary_parts, enemy_summary_parts),
     )
     return CombatRoundOutcome(
         session=updated_session,
-        log_event=CombatLogEvent(session.round_number, " ".join(summary_parts), "\n".join(detail_lines), payload),
+        log_event=CombatLogEvent(
+            session.round_number,
+            _compose_round_summary(player_summary_parts, enemy_summary_parts),
+            "\n".join(detail_lines),
+            payload,
+        ),
         resolution_type=resolution_type,
         resolution_title=resolution_title,
         resolution_description=resolution_description,

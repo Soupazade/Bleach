@@ -7,7 +7,7 @@ from typing import Any, Literal
 from src.models.exploration import ActiveExploration
 
 
-CombatAction = Literal["strike", "guard", "retreat", "ability", "afk_skip"]
+CombatAction = Literal["strike", "guard", "retreat", "ability", "bandage", "afk_skip"]
 CombatSourceKind = Literal["exploration", "fighttest"]
 CombatResolutionType = Literal["victory", "defeat", "retreated", "afk_defeat"]
 AbilityTargeting = Literal["single", "all"]
