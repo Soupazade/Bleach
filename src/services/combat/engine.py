@@ -130,8 +130,20 @@ def _perform_strike(
 
 
 def _enemy_choice(enemy: CombatEntity) -> CombatChoice:
-    roll = random.randint(1, 100)
-    if roll <= enemy.attack_bias:
+    available_abilities = [
+        ability_key
+        for ability_key in enemy.abilities
+        if enemy.cooldowns.get(ability_key, 0) <= 0
+        and enemy.mana_current >= get_combat_ability(ability_key).mana_cost
+    ]
+    ability_weight = enemy.ability_bias if available_abilities else 0
+    attack_weight = max(0, enemy.attack_bias)
+    guard_weight = max(0, enemy.guard_bias)
+    total_weight = max(1, ability_weight + attack_weight + guard_weight)
+    roll = random.randint(1, total_weight)
+    if available_abilities and roll <= ability_weight:
+        return CombatChoice(action="ability", ability_key=random.choice(available_abilities))
+    if roll <= ability_weight + attack_weight:
         return CombatChoice(action="strike")
     return CombatChoice(action="guard")
 
@@ -358,6 +370,64 @@ def resolve_combat_round(
                 summary_parts.append(f"**{enemy.name}** guards and waits for an opening.")
                 detail_lines.append(f"{enemy.name} chooses Guard.")
                 continue
+            if enemy_choice.action == "ability" and enemy_choice.ability_key is not None:
+                ability = get_combat_ability(enemy_choice.ability_key)
+                enemy = replace(
+                    enemy,
+                    mana_current=max(0, enemy.mana_current - ability.mana_cost),
+                    cooldowns={**enemy.cooldowns, ability.key: ability.cooldown_turns},
+                )
+                enemies = [enemy if candidate.entity_id == enemy.entity_id else candidate for candidate in enemies]
+                summary_parts.append(f"**{enemy.name}** uses **{ability.name}**.")
+                detail_lines.append(
+                    f"Enemy ability: {enemy.name} casts {ability.name} mana_cost={ability.mana_cost} cooldown={ability.cooldown_turns}"
+                )
+                for hit_index in range(ability.hits):
+                    updated_player, text, details, hit_landed = _perform_strike(
+                        attacker=enemy,
+                        defender=player,
+                        label=f"**{enemy.name}** {ability.name} hit {hit_index + 1}",
+                        base_hit_pct=ability.hit_chance,
+                        power_multiplier=ability.power_multiplier,
+                    )
+                    if hit_landed and player_guarding:
+                        reduced_damage, reduction_pct = _apply_guard_reduction(int(details["final_damage"]))
+                        updated_player = replace(player, hp_current=max(0, player.hp_current - reduced_damage))
+                        text = f"**{enemy.name}** crashes into your guard for **{reduced_damage}** damage with {ability.name}."
+                        details["guard_reduction_pct"] = reduction_pct
+                        details["guarded_damage"] = reduced_damage
+                        if random.random() < 0.10:
+                            updated_enemy, counter_text, counter_details, _ = _perform_strike(
+                                attacker=player,
+                                defender=enemy,
+                                label="You counter",
+                                base_hit_pct=100.0,
+                                power_multiplier=2.0,
+                            )
+                            enemy = updated_enemy
+                            enemies = [enemy if candidate.entity_id == enemy.entity_id else candidate for candidate in enemies]
+                            summary_parts.append(counter_text)
+                            _append_hit_breakdown(detail_lines, "Guard Counter", counter_details)
+                            payload["events"].append(
+                                {"kind": "guard_counter", "target": enemy.entity_id, "details": counter_details}
+                            )
+                        player_was_hit = True
+                    elif hit_landed:
+                        player_was_hit = True
+                    player = updated_player
+                    summary_parts.append(text)
+                    _append_hit_breakdown(detail_lines, f"Enemy Ability | {enemy.name} | {ability.name} | Hit {hit_index + 1}", details)
+                    payload["events"].append(
+                        {
+                            "kind": "enemy_ability_hit",
+                            "enemy": enemy.entity_id,
+                            "ability": ability.key,
+                            "details": details,
+                        }
+                    )
+                    if player.hp_current <= 0:
+                        return
+                continue
             updated_player, text, details, hit_landed = _perform_strike(
                 attacker=enemy,
                 defender=player,
@@ -424,10 +494,14 @@ def resolve_combat_round(
                 _resolve_player_action_once(player_choice)
 
     player.cooldowns = _decrement_cooldowns(player.cooldowns)
+    enemies = [replace(enemy, cooldowns=_decrement_cooldowns(enemy.cooldowns)) for enemy in enemies]
     player, mana_restored = _regen_mana(player, guarded_breathing=player_guarding and not player_was_hit)
     if player_guarding and not player_was_hit and mana_restored > 0:
         summary_parts.append("Your guard buys a small break, and your reiatsu steadies on the inhale.")
     detail_lines.append(f"Cooldowns after turn: {player.cooldowns}")
+    for enemy in enemies:
+        if enemy.cooldowns:
+            detail_lines.append(f"{enemy.name} cooldowns after turn: {enemy.cooldowns}")
     detail_lines.append(f"End-turn mana regen: +{mana_restored}")
 
     resolution_type = None

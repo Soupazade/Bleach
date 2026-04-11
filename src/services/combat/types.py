@@ -72,6 +72,7 @@ class CombatEntity:
     cooldowns: dict[str, int] = field(default_factory=dict)
     attack_bias: int = 100
     guard_bias: int = 0
+    ability_bias: int = 0
 
     @property
     def is_alive(self) -> bool:
@@ -108,6 +109,7 @@ class CombatEntity:
             "cooldowns": self.cooldowns,
             "attack_bias": self.attack_bias,
             "guard_bias": self.guard_bias,
+            "ability_bias": self.ability_bias,
         }
 
     @classmethod
@@ -130,6 +132,7 @@ class CombatEntity:
             cooldowns={str(key): int(value) for key, value in payload.get("cooldowns", {}).items()},
             attack_bias=int(payload.get("attack_bias", 100)),
             guard_bias=int(payload.get("guard_bias", 0)),
+            ability_bias=int(payload.get("ability_bias", 0)),
         )
 
 

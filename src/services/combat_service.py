@@ -138,8 +138,10 @@ def _build_enemy_entity(enemy_template: CombatEnemyTemplate) -> CombatEntity:
         defense=enemy_template.defense,
         speed=enemy_template.speed,
         reiatsu=enemy_template.reiatsu,
+        abilities=enemy_template.abilities,
         attack_bias=enemy_template.attack_bias,
         guard_bias=enemy_template.guard_bias,
+        ability_bias=enemy_template.ability_bias,
     )
 
 
@@ -148,7 +150,7 @@ def _build_initial_log_text(player: PlayerProfile, enemy_template: CombatEnemyTe
         [
             f"Fight Start | source={source_kind}",
             f"Player | level={player.level} race={player.race} rank={player.rank} power={player.power} defense={player.defense} speed={player.speed} reiatsu={player.reiatsu}",
-            f"Enemy | name={enemy_template.name} level={enemy_template.level} power={enemy_template.power} defense={enemy_template.defense} speed={enemy_template.speed} reiatsu={enemy_template.reiatsu}",
+            f"Enemy | name={enemy_template.name} level={enemy_template.level} power={enemy_template.power} defense={enemy_template.defense} speed={enemy_template.speed} reiatsu={enemy_template.reiatsu} abilities={','.join(enemy_template.abilities) or 'none'}",
         ]
     )
 
@@ -175,6 +177,7 @@ async def create_active_exploration_combat(
         exploration.location,
         encounter_title=encounter_title,
         approach_risk="medium",
+        player_level=player.level,
     )
     fight_log = await create_fight_log(
         connection,
@@ -526,7 +529,12 @@ async def start_fight_test(
 
             active_effects = await list_active_player_effects_for_connection(connection, user_id)
             snapshot = build_effective_combat_snapshot(player, active_effects)
-            enemy = get_enemy_for_exploration_combat(player.location, encounter_title="Fight Test", approach_risk="medium")
+            enemy = get_enemy_for_exploration_combat(
+                player.location,
+                encounter_title="Fight Test",
+                approach_risk="medium",
+                player_level=player.level,
+            )
             fight_log = await create_fight_log(
                 connection,
                 user_id=user_id,

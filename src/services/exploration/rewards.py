@@ -629,6 +629,7 @@ async def start_instant_combat(
         exploration.location,
         encounter_title=event.title,
         approach_risk=approach.risk_tier,
+        player_level=player.level,
     )
     active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
     combat_snapshot = build_effective_combat_snapshot(player, active_effects)
@@ -676,6 +677,7 @@ async def start_decision_combat(
         session.location,
         encounter_title=event_title,
         approach_risk=approach.risk_tier,
+        player_level=player.level,
     )
     active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
     combat_snapshot = build_effective_combat_snapshot(player, active_effects)
