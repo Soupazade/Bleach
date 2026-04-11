@@ -353,13 +353,16 @@ async def _advance_combat(
             return CombatAdvanceResult(status="resolved", combat=updated_session, fight_embed=result_embed, blackout_applied=blackout_applied)
 
 
-async def _disable_old_combat_message(message: discord.Message | None) -> None:
+async def _remove_old_combat_message(message: discord.Message | None) -> None:
     if message is None:
         return
     try:
-        await message.edit(view=None)
+        await message.delete()
     except discord.HTTPException:
-        pass
+        try:
+            await message.edit(view=None)
+        except discord.HTTPException:
+            pass
 
 
 async def _post_active_combat_message(
@@ -393,10 +396,10 @@ async def _post_active_combat_message(
             except discord.HTTPException:
                 discord_user = None
 
-    await _disable_old_combat_message(old_message)
     view = ExplorationCombatView(bot, combat)
     embed = build_exploration_combat_embed(combat, discord_user)
     message = await channel.send(content=f"<@{combat.user_id}>", embed=embed, view=view)
+    await _remove_old_combat_message(old_message)
     rebound = await bind_combat_message(bot.db_pool, fight_id=combat.fight_id, message_id=message.id)
     if rebound is None:
         return None
@@ -428,7 +431,6 @@ async def resolve_and_post_combat_action(
     if result.status == "blocked":
         return result
     if result.status == "resolved" and result.resolution is not None:
-        await _disable_old_combat_message(old_message)
         channel = None if old_message is None else old_message.channel
         if channel is None and result.combat is not None:
             channel = bot.get_channel(result.combat.channel_id)

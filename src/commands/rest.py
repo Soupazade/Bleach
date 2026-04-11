@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 def build_rest_started_embed(player, rest_status: RestStatus) -> discord.Embed:
     embed = discord.Embed(
         title="Resting Begun",
-        description="You begin resting. You recover **5 stamina and 5 HP per minute** until you stop.",
+        description="You begin resting. You recover **5 stamina** and **3% HP / 3% mana per minute** until you stop.",
         color=discord.Color.teal(),
     )
     embed.add_field(name="Status", value="**Resting**", inline=True)
@@ -29,14 +29,18 @@ def build_rest_started_embed(player, rest_status: RestStatus) -> discord.Embed:
     )
     embed.add_field(
         name="Projected Recovery",
-        value=f"**+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP**",
+        value=(
+            f"**+{rest_status.recovered_stamina} stamina, "
+            f"+{rest_status.recovered_hp} HP, +{rest_status.recovered_mana} mana**"
+        ),
         inline=True,
     )
     embed.add_field(
         name="Current Resources",
         value=(
             f"**HP:** {player.hp_current}/{player.hp_max}\n"
-            f"**Stamina:** {player.stamina_current}/{player.stamina_max}"
+            f"**Stamina:** {player.stamina_current}/{player.stamina_max}\n"
+            f"**Mana:** {player.mana_current}/{player.mana_max}"
         ),
         inline=False,
     )
@@ -48,7 +52,8 @@ def build_rest_stopped_embed(player, rest_status: RestStatus) -> discord.Embed:
         title="Rest Ended",
         description=(
             "You stop resting and recover "
-            f"**{rest_status.recovered_stamina} stamina** and **{rest_status.recovered_hp} HP**."
+            f"**{rest_status.recovered_stamina} stamina**, **{rest_status.recovered_hp} HP**, and "
+            f"**{rest_status.recovered_mana} mana**."
         ),
         color=discord.Color.green(),
     )
@@ -61,7 +66,8 @@ def build_rest_stopped_embed(player, rest_status: RestStatus) -> discord.Embed:
         name="Recovered",
         value=(
             f"**+{rest_status.recovered_stamina} stamina**\n"
-            f"**+{rest_status.recovered_hp} HP**"
+            f"**+{rest_status.recovered_hp} HP**\n"
+            f"**+{rest_status.recovered_mana} mana**"
         ),
         inline=True,
     )
@@ -69,7 +75,8 @@ def build_rest_stopped_embed(player, rest_status: RestStatus) -> discord.Embed:
         name="Current Resources",
         value=(
             f"**HP:** {player.hp_current}/{player.hp_max}\n"
-            f"**Stamina:** {player.stamina_current}/{player.stamina_max}"
+            f"**Stamina:** {player.stamina_current}/{player.stamina_max}\n"
+            f"**Mana:** {player.mana_current}/{player.mana_max}"
         ),
         inline=True,
     )

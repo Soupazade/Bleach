@@ -70,6 +70,7 @@ class PlayerDebugState:
     rest_minutes: int
     projected_rest_stamina_recovery: int
     projected_rest_hp_recovery: int
+    projected_rest_mana_recovery: int
 
 
 VALID_STAT_FIELDS = {"power", "defense", "speed", "reiatsu"}
@@ -334,6 +335,7 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
                         "rest_start_time": None,
                         "rest_stamina_snapshot": None,
                         "rest_hp_snapshot": None,
+                        "rest_mana_snapshot": None,
                         "stamina_updated_at": datetime.now(timezone.utc),
                     },
                 )
@@ -373,4 +375,5 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
         rest_minutes=rest_status.resting_minutes,
         projected_rest_stamina_recovery=rest_status.recovered_stamina,
         projected_rest_hp_recovery=rest_status.recovered_hp,
+        projected_rest_mana_recovery=rest_status.recovered_mana,
     )

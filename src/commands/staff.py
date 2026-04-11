@@ -234,8 +234,8 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
             f"Status: **{'Resting' if profile.is_resting else 'Not Resting'}**\n"
             f"Rest Start: **{discord.utils.format_dt(profile.rest_start_time, 'R')}**\n"
             f"Rest Minutes: **{debug_state.rest_minutes}**\n"
-            f"Projected Recovery: **+{debug_state.projected_rest_stamina_recovery} stamina, +{debug_state.projected_rest_hp_recovery} HP**\n"
-            f"Rest Snapshots: **ST {profile.rest_stamina_snapshot} | HP {profile.rest_hp_snapshot}**\n"
+            f"Projected Recovery: **+{debug_state.projected_rest_stamina_recovery} stamina, +{debug_state.projected_rest_hp_recovery} HP, +{debug_state.projected_rest_mana_recovery} mana**\n"
+            f"Rest Snapshots: **ST {profile.rest_stamina_snapshot} | HP {profile.rest_hp_snapshot} | MP {profile.rest_mana_snapshot}**\n"
             f"Stamina Updated: **{discord.utils.format_dt(profile.stamina_updated_at, 'R')}**"
             if profile.is_resting and profile.rest_start_time is not None
             else (

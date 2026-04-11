@@ -56,8 +56,12 @@ def calculate_rest_stamina_recovery(minutes_resting: int) -> int:
     return max(0, minutes_resting) * 5
 
 
-def calculate_rest_hp_recovery(minutes_resting: int) -> int:
-    return max(0, minutes_resting) * 5
+def calculate_rest_hp_recovery(minutes_resting: int, hp_max: int) -> int:
+    return max(0, int(round(max(0, hp_max) * 0.03 * max(0, minutes_resting))))
+
+
+def calculate_rest_mana_recovery(minutes_resting: int, mana_max: int) -> int:
+    return max(0, int(round(max(0, mana_max) * 0.03 * max(0, minutes_resting))))
 
 
 def calculate_passive_stamina_recovery(

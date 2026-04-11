@@ -39,6 +39,7 @@ class PlayerProfile:
     rest_start_time: datetime | None
     rest_stamina_snapshot: int | None
     rest_hp_snapshot: int | None
+    rest_mana_snapshot: int | None
     stamina_updated_at: datetime
     created_at: datetime
 
@@ -82,6 +83,7 @@ class PlayerProfile:
             rest_start_time=record["rest_start_time"],
             rest_stamina_snapshot=record["rest_stamina_snapshot"],
             rest_hp_snapshot=record["rest_hp_snapshot"],
+            rest_mana_snapshot=record["rest_mana_snapshot"],
             stamina_updated_at=record["stamina_updated_at"],
             created_at=record["created_at"],
         )

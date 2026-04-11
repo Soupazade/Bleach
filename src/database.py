@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS player_profiles (
     rest_start_time TIMESTAMPTZ,
     rest_stamina_snapshot INTEGER,
     rest_hp_snapshot INTEGER,
+    rest_mana_snapshot INTEGER,
     stamina_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -257,6 +258,7 @@ PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_start_time TIMESTAMPTZ",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_stamina_snapshot INTEGER",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_hp_snapshot INTEGER",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rest_mana_snapshot INTEGER",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stamina_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",

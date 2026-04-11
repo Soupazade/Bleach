@@ -117,7 +117,7 @@ def _add_status_field(embed: discord.Embed, player: PlayerProfile) -> None:
                 f"⏱ Resting Since: {rest_status.resting_minutes} minute(s) ago",
                 (
                     "⚡ Projected Recovery: "
-                    f"+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP"
+                    f"+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP, +{rest_status.recovered_mana} mana"
                 ),
             ),
             inline=False,
@@ -462,7 +462,7 @@ def build_profile_embed(
                 f"⏱ Resting Since: {rest_status.resting_minutes} minute(s) ago",
                 (
                     "⚡ Projected Recovery: "
-                    f"+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP"
+                    f"+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP, +{rest_status.recovered_mana} mana"
                 ),
             ),
             inline=False,

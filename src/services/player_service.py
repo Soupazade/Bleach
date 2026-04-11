@@ -26,6 +26,7 @@ from src.models.player import PlayerProfile
 from src.services.formulas import (
     calculate_minutes_elapsed,
     calculate_rest_hp_recovery,
+    calculate_rest_mana_recovery,
     calculate_passive_stamina_recovery,
     calculate_rest_stamina_recovery,
 )
@@ -58,6 +59,7 @@ PLAYER_PROFILE_COLUMNS = """
     rest_start_time,
     rest_stamina_snapshot,
     rest_hp_snapshot,
+    rest_mana_snapshot,
     stamina_updated_at,
     created_at
 """
@@ -69,6 +71,7 @@ class ResourceSyncResult:
     passive_stamina_gained: int = 0
     rest_stamina_gained: int = 0
     rest_hp_gained: int = 0
+    rest_mana_gained: int = 0
     resting_minutes: int = 0
 
 
@@ -84,6 +87,7 @@ class RestStatus:
     resting_minutes: int = 0
     recovered_stamina: int = 0
     recovered_hp: int = 0
+    recovered_mana: int = 0
 
 
 async def has_legacy_discord_user_id_column(connection: Connection) -> bool:
@@ -207,10 +211,13 @@ async def sync_player_record(
     hp_max = int(record["hp_max"])
     stamina_current = int(record["stamina_current"])
     stamina_max = int(record["stamina_max"])
+    mana_current = int(record["mana_current"])
+    mana_max = int(record["mana_max"])
     updates: dict[str, Any] = {}
     passive_stamina_gained = 0
     rest_stamina_gained = 0
     rest_hp_gained = 0
+    rest_mana_gained = 0
     resting_minutes = 0
 
     if bool(record["is_resting"]):
@@ -225,9 +232,15 @@ async def sync_player_record(
             rest_hp_snapshot = hp_current
             updates["rest_hp_snapshot"] = rest_hp_snapshot
 
+        rest_mana_snapshot = record["rest_mana_snapshot"]
+        if rest_mana_snapshot is None:
+            rest_mana_snapshot = mana_current
+            updates["rest_mana_snapshot"] = rest_mana_snapshot
+
         resting_minutes = calculate_minutes_elapsed(rest_start_time, now)
         recovered_stamina_total = calculate_rest_stamina_recovery(resting_minutes)
-        recovered_hp_total = calculate_rest_hp_recovery(resting_minutes)
+        recovered_hp_total = calculate_rest_hp_recovery(resting_minutes, hp_max)
+        recovered_mana_total = calculate_rest_mana_recovery(resting_minutes, mana_max)
         new_stamina = min(
             stamina_max,
             int(rest_stamina_snapshot) + recovered_stamina_total,
@@ -236,13 +249,20 @@ async def sync_player_record(
             hp_max,
             int(rest_hp_snapshot) + recovered_hp_total,
         )
+        new_mana = min(
+            mana_max,
+            int(rest_mana_snapshot) + recovered_mana_total,
+        )
         rest_stamina_gained = new_stamina - int(rest_stamina_snapshot)
         rest_hp_gained = new_hp - int(rest_hp_snapshot)
+        rest_mana_gained = new_mana - int(rest_mana_snapshot)
 
         if new_stamina != stamina_current:
             updates["stamina_current"] = new_stamina
         if new_hp != hp_current:
             updates["hp_current"] = new_hp
+        if new_mana != mana_current:
+            updates["mana_current"] = new_mana
 
         if rest_start_time != record["rest_start_time"]:
             updates["rest_start_time"] = rest_start_time
@@ -294,6 +314,7 @@ async def sync_player_record(
             passive_stamina_gained=passive_stamina_gained,
             rest_stamina_gained=rest_stamina_gained,
             rest_hp_gained=rest_hp_gained,
+            rest_mana_gained=rest_mana_gained,
             resting_minutes=resting_minutes,
         )
 
@@ -302,6 +323,7 @@ async def sync_player_record(
         passive_stamina_gained=passive_stamina_gained,
         rest_stamina_gained=rest_stamina_gained,
         rest_hp_gained=rest_hp_gained,
+        rest_mana_gained=rest_mana_gained,
         resting_minutes=resting_minutes,
     )
 
@@ -490,7 +512,8 @@ def build_resting_block_message(player: PlayerProfile, rest_status: RestStatus) 
         "You are currently resting and must stop with `/rest` before using action commands.\n"
         f"Status: **Resting**\n"
         f"Resting Since: **{rest_status.resting_minutes} minute(s) ago**\n"
-        f"Projected Recovery: **+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP**"
+        "Projected Recovery: "
+        f"**+{rest_status.recovered_stamina} stamina, +{rest_status.recovered_hp} HP, +{rest_status.recovered_mana} mana**"
     )
 
 
@@ -509,12 +532,19 @@ def get_rest_status(player: PlayerProfile) -> RestStatus:
         if player.rest_hp_snapshot is not None
         else player.hp_current
     )
+    rest_mana_snapshot = (
+        player.rest_mana_snapshot
+        if player.rest_mana_snapshot is not None
+        else player.mana_current
+    )
     recovered_stamina = max(0, player.stamina_current - rest_stamina_snapshot)
     recovered_hp = max(0, player.hp_current - rest_hp_snapshot)
+    recovered_mana = max(0, player.mana_current - rest_mana_snapshot)
     return RestStatus(
         resting_minutes=resting_minutes,
         recovered_stamina=recovered_stamina,
         recovered_hp=recovered_hp,
+        recovered_mana=recovered_mana,
     )
 
 
@@ -540,6 +570,7 @@ async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile
                         "rest_start_time": None,
                         "rest_stamina_snapshot": None,
                         "rest_hp_snapshot": None,
+                        "rest_mana_snapshot": None,
                         "stamina_updated_at": now,
                     },
                 )
@@ -550,6 +581,7 @@ async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile
                         resting_minutes=sync_result.resting_minutes,
                         recovered_stamina=sync_result.rest_stamina_gained,
                         recovered_hp=sync_result.rest_hp_gained,
+                        recovered_mana=sync_result.rest_mana_gained,
                     ),
                 )
 
@@ -561,6 +593,7 @@ async def toggle_resting(pool: Pool | None, user_id: int) -> tuple[PlayerProfile
                     "rest_start_time": now,
                     "rest_stamina_snapshot": int(record["stamina_current"]),
                     "rest_hp_snapshot": int(record["hp_current"]),
+                    "rest_mana_snapshot": int(record["mana_current"]),
                     "stamina_updated_at": now,
                 },
             )
