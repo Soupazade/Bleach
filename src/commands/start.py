@@ -9,7 +9,6 @@ from src.data.game_constants import SOUL_ROLE_ID
 from src.models.player import PlayerProfile
 from src.services.location_service import format_location_room_reference, resolve_location_role
 from src.services.player_service import create_player_profile
-from src.services.quest_service import ensure_auto_start_quests
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -70,7 +69,7 @@ def build_start_embed(
         name="First Tutorial",
         value=(
             "Your first main quest is **A Soul's First Day**.\n"
-            "Open `/quest`, choose **Main Quests**, and follow Kaito's lead through the basics."
+            "Open `/quest`, browse **Main Quests**, inspect it, and accept it to begin Kaito's tutorial."
         ),
         inline=False,
     )
@@ -165,8 +164,6 @@ def register_start_command(bot: "BleachBot") -> None:
                 ephemeral=True,
             )
             return
-
-        await ensure_auto_start_quests(bot.db_pool, member.id)
 
         role_summary = None
         role_warning = None

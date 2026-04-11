@@ -17,7 +17,7 @@ SOULS_FIRST_DAY_QUEST = QuestDefinition(
     short_description="Kaito shows you the first hard rules of surviving Rukongai.",
     guide_name="Kaito",
     min_level=1,
-    auto_start=True,
+    auto_start=False,
     steps=(
         QuestStepDefinition(
             title="Find Something to Hold Onto",

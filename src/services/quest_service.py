@@ -271,6 +271,51 @@ async def get_player_quest_board(
     return PlayerQuestBoard(player=player, quests_by_category=quests_by_category)
 
 
+async def accept_quest(
+    pool: Pool | None,
+    user_id: int,
+    quest_key: str,
+) -> str:
+    if pool is None:
+        return "missing_profile"
+
+    try:
+        quest = get_quest_definition(quest_key)
+    except ValueError:
+        return "invalid_quest"
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if player_sync is None:
+                return "missing_profile"
+
+            player = PlayerProfile.from_record(player_sync.record)
+            if player.level < quest.min_level:
+                return "ineligible"
+
+            existing_record = await fetch_player_quest_record(
+                connection,
+                user_id,
+                quest_key,
+                for_update=True,
+            )
+            if existing_record is not None:
+                existing = PlayerQuestRecord.from_record(existing_record)
+                if existing.status == "completed":
+                    return "completed"
+                return "active"
+
+            await create_player_quest_record(
+                connection,
+                user_id=user_id,
+                quest_key=quest_key,
+                status="active",
+                current_step_index=0,
+            )
+            return "accepted"
+
+
 async def _apply_quest_rewards(
     connection: Connection,
     *,
