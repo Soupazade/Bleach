@@ -54,6 +54,16 @@ def build_explore_menu_embed(
         value="Choose your move in the district.",
         inline=False,
     )
+    if wounded_penalty:
+        embed.add_field(
+            name="Wounded Penalty",
+            value=build_explore_info_lines(
+                f"Adjusted Duration: {duration_minutes} minutes",
+                f"Adjusted Cost: {stamina_cost}",
+                "Wounded doubles your explore time and stamina cost until it fades.",
+            ),
+            inline=False,
+        )
     add_explore_divider(embed)
     embed.set_footer(text=location_exploration.menu_footer)
     return embed
@@ -65,6 +75,9 @@ def build_explore_started_embed(
     *,
     stamina_cost: int,
     base_stamina_cost: int,
+    duration_minutes: int,
+    base_duration_minutes: int,
+    wounded_penalty: bool,
 ) -> discord.Embed:
     location = get_location_definition(exploration.location)
     approach = get_explore_approach(exploration.approach)
@@ -348,6 +361,9 @@ class ExploreView(discord.ui.View):
                     result.exploration,
                     stamina_cost=result.stamina_cost,
                     base_stamina_cost=result.base_stamina_cost,
+                    duration_minutes=result.duration_minutes,
+                    base_duration_minutes=result.base_duration_minutes,
+                    wounded_penalty=result.wounded_penalty,
                 ),
                 view=None,
             )

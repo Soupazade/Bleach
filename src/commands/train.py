@@ -15,6 +15,7 @@ from src.services.exploration_service import (
 )
 from src.services.location_service import channel_matches_location
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
+from src.services.status_service import is_player_wounded
 from src.services.training_service import (
     get_active_training,
     resolve_and_post_training,
@@ -32,6 +33,7 @@ from src.ui.train_view import (
     build_training_missing_profile_embed,
     build_training_resolution_posted_embed,
     build_training_resting_embed,
+    build_training_wounded_embed,
     build_training_wrong_room_embed,
 )
 from src.ui.travel_view import build_travel_active_embed, build_travel_resolution_posted_embed
@@ -104,6 +106,12 @@ def register_train_command(bot: "BleachBot") -> None:
                 embed=build_training_resting_embed(
                     build_resting_block_message(player, rest_status)
                 ),
+            )
+            return
+
+        if await is_player_wounded(bot.db_pool, interaction.user.id):
+            await interaction.response.send_message(
+                embed=build_training_wounded_embed(),
             )
             return
 

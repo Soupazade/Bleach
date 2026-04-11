@@ -22,6 +22,8 @@ def _format_inventory_entry(item: PlayerInventoryItem) -> str:
         lines.append(item.item_description)
     if item.item_key == "bandages":
         lines.append("Use with `/use` to restore 25% HP outside combat.")
+    if item.item_key == "ration_pack":
+        lines.append("Use with `/use` to restore 10 stamina outside combat.")
     lines.append(" | ".join(detail_bits))
     return "\n".join(lines)
 
@@ -59,7 +61,7 @@ def build_inventory_embed(
     total_quantity = sum(item.quantity for item in items)
 
     embed = discord.Embed(
-        title="🎒 Soul Record — Inventory",
+        title="🎒 Soul Record - Inventory",
         description=(
             "Everything you managed to keep, hide, or drag out of the district ends up here. "
             "In Rukongai, what stays in your hands matters almost as much as what stays in your lungs."
@@ -174,29 +176,50 @@ def build_item_use_success_embed(
     player: PlayerProfile,
     item_definition: ItemDefinition,
     healed_amount: int,
+    restored_stamina: int,
     quantity_remaining: int,
 ) -> discord.Embed:
+    description = (
+        "You force yourself to eat, let the weight settle, and feel a little strength return to your limbs."
+        if restored_stamina > 0
+        else "You work the wraps tight, slow your breathing, and get the worst of the damage back under control."
+    )
     embed = discord.Embed(
         title=f"🩹 {item_definition.name} Used",
-        description=(
-            "You work the wraps tight, slow your breathing, and get the worst of the damage back under control."
-        ),
+        description=description,
         color=get_explore_color("reward"),
     )
-    embed.add_field(
-        name="What Changed",
-        value=build_explore_info_lines(
+
+    change_lines = [f"🎒 Remaining: {quantity_remaining}"]
+    if healed_amount > 0:
+        change_lines = [
             f"❤️ HP Restored: {healed_amount}",
             f"❤️ Current HP: {player.hp_current}/{player.hp_max}",
-            f"🎒 Remaining: {quantity_remaining}",
-        ),
+            *change_lines,
+        ]
+    if restored_stamina > 0:
+        change_lines = [
+            f"⚡ Stamina Restored: {restored_stamina}",
+            f"⚡ Current Stamina: {player.stamina_current}/{player.stamina_max}",
+            *change_lines,
+        ]
+
+    embed.add_field(
+        name="What Changed",
+        value=build_explore_info_lines(*change_lines),
         inline=False,
     )
+    effect_text = "Bandages restore **25% of your max HP** outside combat."
+    if item_definition.restore_stamina_flat > 0:
+        effect_text = f"{item_definition.name} restores **{item_definition.restore_stamina_flat} stamina** outside combat."
     embed.add_field(
         name="Item Effect",
-        value="Bandages restore **25% of your max HP** outside combat.",
+        value=effect_text,
         inline=False,
     )
     add_explore_divider(embed)
-    embed.set_footer(text="Even rough treatment is better than bleeding into the dirt.")
+    footer_text = "Even rough treatment is better than bleeding into the dirt."
+    if restored_stamina > 0:
+        footer_text = "A little fuel still matters when the streets keep taking from you."
+    embed.set_footer(text=footer_text)
     return embed

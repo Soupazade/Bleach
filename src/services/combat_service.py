@@ -1,142 +1,162 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
-import random
-from typing import Literal
+from datetime import datetime, timedelta, timezone
+import io
+import logging
+from typing import TYPE_CHECKING, Literal
 
+import discord
 from asyncpg import Connection, Pool, Record
 
 from src.data.combat import CombatEnemyTemplate, get_enemy_for_exploration_combat
-from src.data.exploration import get_explore_approach
-from src.models.combat import ActiveExplorationCombat
-from src.models.exploration import ActiveExploration
+from src.data.locations import RUKONGAI_STREETS, get_location_definition
 from src.models.player import PlayerProfile
-from src.services.effect_service import EffectiveCombatSnapshot
+from src.services.combat.abilities import list_unlocked_player_abilities
+from src.services.combat.engine import resolve_combat_round
+from src.services.combat.repository import (
+    append_fight_log_event,
+    bind_fight_log_to_fight,
+    create_active_combat,
+    create_fight_log,
+    delete_active_combat,
+    fetch_active_combat_record,
+    fetch_active_combat_record_by_message,
+    finalize_fight_log,
+    get_active_combat,
+    get_active_combat_by_message,
+    get_fight_log,
+    list_active_combats,
+    session_from_record,
+    update_active_combat,
+    update_active_combat_message,
+)
+from src.services.combat.types import (
+    CombatAction,
+    CombatChoice,
+    CombatEntity,
+    CombatSession,
+)
+from src.services.effect_service import EffectiveCombatSnapshot, build_effective_combat_snapshot, list_active_player_effects_for_connection
+from src.services.player_service import get_or_sync_player_record, update_player_record
+from src.services.role_service import sync_member_location_role
+from src.services.status_service import grant_wounded_status
+
+if TYPE_CHECKING:
+    from src.main import BleachBot
+    from src.services.exploration.types import ExplorationResolution
 
 
-CombatAction = Literal["attack", "guard", "focus", "retreat"]
-
-ACTIVE_EXPLORATION_COMBAT_COLUMNS = """
-    user_id,
-    channel_id,
-    message_id,
-    location,
-    approach,
-    encounter_title,
-    encounter_description,
-    resolution_title,
-    resolution_description,
-    enemy_name,
-    enemy_hp_current,
-    enemy_hp_max,
-    enemy_power,
-    enemy_defense,
-    enemy_speed,
-    reward_xp_win,
-    reward_xp_lose,
-    reputation_change,
-    player_hp_current,
-    player_hp_max,
-    player_mana_current,
-    player_mana_max,
-    player_power,
-    player_defense,
-    player_speed,
-    player_reiatsu,
-    round_number,
-    focus_bonus,
-    guard_active,
-    last_round_summary,
-    created_at,
-    updated_at
-"""
-
-@dataclass(slots=True)
-class CombatOutcome:
-    combat: ActiveExplorationCombat
-    title: str
-    description: str
-    xp_reward: int
-    combat_outcome: Literal["Victory", "Setback", "Retreated"]
-    reputation_change: int
-    player_hp_current: int
-    player_mana_current: int
+COMBAT_TURN_TIMEOUT = timedelta(minutes=2)
 
 
 @dataclass(slots=True)
 class CombatAdvanceResult:
-    status: Literal["updated", "resolved"]
-    combat: ActiveExplorationCombat | None = None
-    outcome: CombatOutcome | None = None
+    status: Literal["missing", "updated", "resolved"]
+    combat: CombatSession | None = None
+    resolution: "ExplorationResolution | None" = None
+    fight_embed: discord.Embed | None = None
+    blackout_applied: bool = False
 
 
-async def fetch_active_combat_record(
-    connection: Connection,
-    user_id: int,
-    *,
-    for_update: bool = False,
-) -> Record | None:
-    lock_clause = " FOR UPDATE" if for_update else ""
-    return await connection.fetchrow(
-        f"""
-        SELECT {ACTIVE_EXPLORATION_COMBAT_COLUMNS}
-        FROM active_exploration_combats
-        WHERE user_id = $1
-        {lock_clause}
-        """,
-        user_id,
+@dataclass(slots=True)
+class StartFightTestResult:
+    status: Literal[
+        "started",
+        "missing_profile",
+        "resting",
+        "busy",
+        "active_combat",
+    ]
+    player: PlayerProfile | None = None
+    combat: CombatSession | None = None
+    reason: str | None = None
+
+
+def _resource_ratio(current: int, maximum: int) -> float:
+    if maximum <= 0:
+        return 0.0
+    return max(0.0, min(1.0, current / maximum))
+
+
+def project_profile_hp_from_combat(player: PlayerProfile, combat: CombatSession) -> int:
+    return max(1, min(player.hp_max, int(round(player.hp_max * _resource_ratio(combat.player.hp_current, combat.player.hp_max)))))
+
+
+def project_profile_mana_from_combat(player: PlayerProfile, combat: CombatSession) -> int:
+    return max(0, min(player.mana_max, int(round(player.mana_max * _resource_ratio(combat.player.mana_current, combat.player.mana_max)))))
+
+
+def _build_player_entity(player: PlayerProfile, snapshot: EffectiveCombatSnapshot | None = None) -> CombatEntity:
+    combat_snapshot = snapshot or EffectiveCombatSnapshot(
+        hp_current=player.hp_current,
+        hp_max=player.hp_max,
+        mana_current=player.mana_current,
+        mana_max=player.mana_max,
+        power=player.power,
+        defense=player.defense,
+        speed=player.speed,
+        reiatsu=player.reiatsu,
+    )
+    hp_ratio = _resource_ratio(player.hp_current, max(1, player.hp_max))
+    mana_ratio = _resource_ratio(player.mana_current, max(1, player.mana_max))
+    hp_max = max(1, player.hp_max + (combat_snapshot.defense * 10))
+    mana_max = max(1, player.mana_max + (combat_snapshot.reiatsu * 5))
+    return CombatEntity(
+        entity_id="player",
+        name="Player",
+        level=player.level,
+        race=player.race,
+        rank=player.rank,
+        hp_current=max(1, min(hp_max, int(round(hp_max * hp_ratio)))),
+        hp_max=hp_max,
+        mana_current=max(0, min(mana_max, int(round(mana_max * mana_ratio)))),
+        mana_max=mana_max,
+        power=combat_snapshot.power,
+        defense=combat_snapshot.defense,
+        speed=combat_snapshot.speed,
+        reiatsu=combat_snapshot.reiatsu,
+        abilities=tuple(ability.key for ability in list_unlocked_player_abilities(player.level)),
     )
 
 
-async def fetch_active_combat_record_by_message(
-    connection: Connection,
-    message_id: int,
-    *,
-    for_update: bool = False,
-) -> Record | None:
-    lock_clause = " FOR UPDATE" if for_update else ""
-    return await connection.fetchrow(
-        f"""
-        SELECT {ACTIVE_EXPLORATION_COMBAT_COLUMNS}
-        FROM active_exploration_combats
-        WHERE message_id = $1
-        {lock_clause}
-        """,
-        message_id,
+def _build_enemy_entity(enemy_template: CombatEnemyTemplate) -> CombatEntity:
+    hp_max = enemy_template.hp + (enemy_template.defense * 10)
+    mana_max = enemy_template.mana + (enemy_template.reiatsu * 5)
+    return CombatEntity(
+        entity_id=enemy_template.key,
+        name=enemy_template.name,
+        level=enemy_template.level,
+        race=enemy_template.race,
+        rank=enemy_template.rank,
+        hp_current=hp_max,
+        hp_max=hp_max,
+        mana_current=mana_max,
+        mana_max=mana_max,
+        power=enemy_template.power,
+        defense=enemy_template.defense,
+        speed=enemy_template.speed,
+        reiatsu=enemy_template.reiatsu,
+        attack_bias=enemy_template.attack_bias,
+        guard_bias=enemy_template.guard_bias,
     )
 
 
-async def get_active_exploration_combat(pool: Pool | None, user_id: int) -> ActiveExplorationCombat | None:
-    if pool is None:
-        return None
-
-    async with pool.acquire() as connection:
-        record = await fetch_active_combat_record(connection, user_id)
-        if record is None:
-            return None
-
-        return ActiveExplorationCombat.from_record(record)
-
-
-async def get_active_exploration_combat_by_message(
-    pool: Pool | None,
-    message_id: int,
-) -> ActiveExplorationCombat | None:
-    if pool is None:
-        return None
-
-    async with pool.acquire() as connection:
-        record = await fetch_active_combat_record_by_message(connection, message_id)
-        if record is None:
-            return None
-
-        return ActiveExplorationCombat.from_record(record)
+def _build_initial_log_text(player: PlayerProfile, enemy_template: CombatEnemyTemplate, source_kind: str) -> str:
+    return "\n".join(
+        [
+            f"Fight Start | source={source_kind}",
+            f"Player | level={player.level} race={player.race} rank={player.rank} power={player.power} defense={player.defense} speed={player.speed} reiatsu={player.reiatsu}",
+            f"Enemy | name={enemy_template.name} level={enemy_template.level} power={enemy_template.power} defense={enemy_template.defense} speed={enemy_template.speed} reiatsu={enemy_template.reiatsu}",
+        ]
+    )
 
 
 async def create_active_exploration_combat(
     connection: Connection,
     *,
-    exploration: ActiveExploration,
+    exploration,
     player: PlayerProfile,
     encounter_title: str,
     encounter_description: str,
@@ -149,375 +169,396 @@ async def create_active_exploration_combat(
     combat_snapshot: EffectiveCombatSnapshot | None = None,
     initial_focus_bonus: int = 0,
     message_id: int | None = None,
-) -> ActiveExplorationCombat:
-    approach = get_explore_approach(exploration.approach)
+) -> CombatSession:
+    del initial_focus_bonus
     enemy = enemy_template or get_enemy_for_exploration_combat(
         exploration.location,
         encounter_title=encounter_title,
-        approach_risk=approach.risk_tier,
+        approach_risk="medium",
     )
-    snapshot = combat_snapshot or EffectiveCombatSnapshot(
-        hp_current=max(1, player.hp_current),
-        hp_max=player.hp_max,
-        mana_current=player.mana_current,
-        mana_max=player.mana_max,
-        power=player.power,
-        defense=player.defense,
-        speed=player.speed,
-        reiatsu=player.reiatsu,
+    fight_log = await create_fight_log(
+        connection,
+        user_id=player.user_id,
+        source_kind="exploration",
+        readable_log=_build_initial_log_text(player, enemy, "exploration"),
     )
-    record = await connection.fetchrow(
-        f"""
-        INSERT INTO active_exploration_combats (
-            user_id,
-            channel_id,
-            message_id,
-            location,
-            approach,
-            encounter_title,
-            encounter_description,
-            resolution_title,
-            resolution_description,
-            enemy_name,
-            enemy_hp_current,
-            enemy_hp_max,
-            enemy_power,
-            enemy_defense,
-            enemy_speed,
-            reward_xp_win,
-            reward_xp_lose,
-            reputation_change,
-            player_hp_current,
-            player_hp_max,
-            player_mana_current,
-            player_mana_max,
-            player_power,
-            player_defense,
-            player_speed,
-            player_reiatsu,
-            round_number,
-            focus_bonus,
-            guard_active,
-            last_round_summary
-        )
-        VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-            $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
-        )
-        RETURNING {ACTIVE_EXPLORATION_COMBAT_COLUMNS}
-        """,
-        exploration.user_id,
-        exploration.channel_id,
-        message_id,
-        exploration.location,
-        exploration.approach,
-        encounter_title,
-        encounter_description,
-        resolution_title,
-        resolution_description,
-        enemy.name,
-        enemy.hp,
-        enemy.hp,
-        enemy.power,
-        enemy.defense,
-        enemy.speed,
-        reward_xp_win,
-        reward_xp_lose,
-        reputation_change,
-        snapshot.hp_current,
-        snapshot.hp_max,
-        snapshot.mana_current,
-        snapshot.mana_max,
-        snapshot.power,
-        snapshot.defense,
-        snapshot.speed,
-        snapshot.reiatsu,
-        1,
-        initial_focus_bonus,
-        False,
-        "The alley tightens. One bad exchange and the whole run goes sideways.",
+    session = await create_active_combat(
+        connection,
+        fight_log_id=fight_log.fight_log_id,
+        user_id=player.user_id,
+        channel_id=exploration.channel_id,
+        message_id=message_id,
+        source_kind="exploration",
+        location=exploration.location,
+        approach=exploration.approach,
+        encounter_title=encounter_title,
+        encounter_description=encounter_description,
+        resolution_title=resolution_title,
+        resolution_description=resolution_description,
+        reward_xp_win=reward_xp_win,
+        reward_xp_lose=reward_xp_lose,
+        reputation_change=reputation_change,
+        player=_build_player_entity(player, combat_snapshot),
+        enemies=(_build_enemy_entity(enemy),),
     )
-    return ActiveExplorationCombat.from_record(record)
-
-
-async def update_active_exploration_combat(
-    connection: Connection,
-    user_id: int,
-    fields: dict[str, object],
-) -> ActiveExplorationCombat:
-    assignments: list[str] = []
-    values: list[object] = []
-    for index, (column_name, value) in enumerate(fields.items(), start=1):
-        assignments.append(f"{column_name} = ${index}")
-        values.append(value)
-
-    values.append(user_id)
-    record = await connection.fetchrow(
-        f"""
-        UPDATE active_exploration_combats
-        SET {", ".join(assignments)}, updated_at = NOW()
-        WHERE user_id = ${len(values)}
-        RETURNING {ACTIVE_EXPLORATION_COMBAT_COLUMNS}
-        """,
-        *values,
-    )
-    return ActiveExplorationCombat.from_record(record)
+    await bind_fight_log_to_fight(connection, fight_log_id=fight_log.fight_log_id, fight_id=session.fight_id)
+    return session
 
 
 async def delete_active_exploration_combat(connection: Connection, user_id: int) -> None:
-    await connection.execute(
-        """
-        DELETE FROM active_exploration_combats
-        WHERE user_id = $1
-        """,
-        user_id,
-    )
+    await delete_active_combat(connection, user_id)
 
 
-def _clamp_probability(value: float, *, low: float, high: float) -> float:
-    return max(low, min(high, value))
+async def get_active_exploration_combat(pool: Pool | None, user_id: int) -> CombatSession | None:
+    return await get_active_combat(pool, user_id)
 
 
-def _roll_initiative(combat: ActiveExplorationCombat) -> bool:
-    player_roll = combat.player_speed + random.randint(0, 3)
-    enemy_roll = combat.enemy_speed + random.randint(0, 3)
-    return player_roll >= enemy_roll
+async def get_active_exploration_combat_by_message(pool: Pool | None, message_id: int) -> CombatSession | None:
+    return await get_active_combat_by_message(pool, message_id)
 
 
-def _roll_dodge(*, attacker_speed: int, defender_speed: int) -> bool:
-    dodge_chance = _clamp_probability(
-        0.04 + max(0, defender_speed - attacker_speed) * 0.02,
-        low=0.0,
-        high=0.22,
-    )
-    return random.random() < dodge_chance
+def _build_timeout_deadline() -> datetime:
+    return datetime.now(timezone.utc) + COMBAT_TURN_TIMEOUT
 
 
-def _calculate_player_damage(combat: ActiveExplorationCombat) -> int:
-    # TODO: Replace this baseline-heavy placeholder once Zanpakuto, skills, and traits feed the full combat engine.
-    return max(
-        1,
-        4 + combat.player_power - combat.enemy_defense + combat.focus_bonus + random.randint(-1, 3),
-    )
+async def bind_combat_message(pool: Pool | None, *, fight_id: int, message_id: int) -> CombatSession | None:
+    if pool is None:
+        return None
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            return await update_active_combat_message(connection, fight_id=fight_id, message_id=message_id)
 
 
-def _calculate_enemy_damage(combat: ActiveExplorationCombat, *, guarded: bool) -> int:
-    damage = max(
-        1,
-        4 + combat.enemy_power - combat.player_defense + random.randint(-1, 2),
-    )
-    if guarded:
-        damage = max(1, damage // 2)
-    return damage
-
-
-def _build_victory_description(combat: ActiveExplorationCombat) -> str:
-    if combat.resolution_description.strip():
-        return combat.resolution_description
-    return (
-        f"The clash with **{combat.enemy_name}** finally breaks your way. "
-        "You stay on your feet, catch your breath, and move before the rest of the block can close around you."
-    )
-
-
-def _build_setback_description(combat: ActiveExplorationCombat) -> str:
-    setbacks = (
-        f"**{combat.enemy_name}** drives you back before you can finish the job. You get out alive, but only because you know when the street has turned against you.",
-        f"The fight turns ugly and you lose control of the pace. You stagger clear of **{combat.enemy_name}**, battered and breathing hard.",
-        f"The exchange slips away from you. By the time you break off from **{combat.enemy_name}**, the opening is gone and the price is already written into your ribs.",
-    )
-    return random.choice(setbacks)
-
-
-def _build_retreat_description(combat: ActiveExplorationCombat) -> str:
-    return (
-        f"You break away from **{combat.enemy_name}** before the alley can swallow the whole fight. "
-        "It is not a clean win, but it beats being dragged down for scraps."
-    )
-
-
-def _resolve_outcome(
-    combat: ActiveExplorationCombat,
+async def _advance_combat(
+    pool: Pool | None,
     *,
-    combat_outcome: Literal["Victory", "Setback", "Retreated"],
-    round_summary: str,
-) -> CombatOutcome:
-    updated_combat = replace(combat, guard_active=False, last_round_summary=round_summary)
-
-    if combat_outcome == "Victory":
-        title = updated_combat.resolution_title
-        description = _build_victory_description(updated_combat)
-        xp_reward = updated_combat.reward_xp_win
-    elif combat_outcome == "Retreated":
-        title = f"You Break Away from {updated_combat.enemy_name}"
-        description = _build_retreat_description(updated_combat)
-        xp_reward = updated_combat.reward_xp_lose
-    else:
-        title = f"{updated_combat.enemy_name} Leaves You Reeling"
-        description = _build_setback_description(updated_combat)
-        xp_reward = updated_combat.reward_xp_lose
-
-    return CombatOutcome(
-        combat=updated_combat,
-        title=title,
-        description=description,
-        xp_reward=xp_reward,
-        combat_outcome=combat_outcome,
-        reputation_change=updated_combat.reputation_change,
-        player_hp_current=max(0, updated_combat.player_hp_current),
-        player_mana_current=max(0, updated_combat.player_mana_current),
-    )
-
-
-def advance_combat_state(
-    combat: ActiveExplorationCombat,
-    action: CombatAction,
+    message_id: int,
+    user_id: int,
+    choice: CombatChoice,
 ) -> CombatAdvanceResult:
-    player_hp = combat.player_hp_current
-    enemy_hp = combat.enemy_hp_current
-    player_mana = combat.player_mana_current
-    focus_bonus = combat.focus_bonus
-    guard_active = False
-    round_summary_parts: list[str] = []
+    if pool is None:
+        return CombatAdvanceResult(status="missing")
 
-    if action == "retreat":
-        retreat_chance = _clamp_probability(
-            0.35 + (combat.player_speed - combat.enemy_speed) * 0.05,
-            low=0.15,
-            high=0.75,
-        )
-        if random.random() < retreat_chance:
-            round_summary_parts.append("You catch one narrow opening and slip the fight before it can lock down.")
-            combat = replace(combat, last_round_summary=" ".join(round_summary_parts))
-            return CombatAdvanceResult(
-                status="resolved",
-                outcome=_resolve_outcome(combat, combat_outcome="Retreated", round_summary=" ".join(round_summary_parts)),
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            record = await fetch_active_combat_record_by_message(connection, message_id, for_update=True)
+            if record is None:
+                return CombatAdvanceResult(status="missing")
+
+            session = session_from_record(record)
+            if session.user_id != user_id:
+                return CombatAdvanceResult(status="missing")
+
+            round_outcome = resolve_combat_round(session, choice)
+            updated_session = round_outcome.session
+            if round_outcome.timed_out:
+                updated_session = replace(updated_session, afk_skips=updated_session.afk_skips + 1)
+                if updated_session.afk_skips >= 3 and round_outcome.resolution_type is None:
+                    round_outcome.resolution_type = "afk_defeat"
+                    round_outcome.resolution_title = f"{updated_session.enemy_name} Leaves You Reeling"
+                    round_outcome.resolution_description = (
+                        f"You lose the thread of the fight completely, and **{updated_session.enemy_name}** drops you before you recover it."
+                    )
+
+            await append_fight_log_event(
+                connection,
+                fight_log_id=updated_session.fight_log_id,
+                detail_text=round_outcome.log_event.detail_text,
+                payload=round_outcome.log_event.payload,
             )
 
-        round_summary_parts.append(f"You try to break away, but **{combat.enemy_name}** stays on you.")
-        if _roll_dodge(attacker_speed=combat.enemy_speed, defender_speed=combat.player_speed):
-            round_summary_parts.append("You still avoid the worst of the follow-up.")
-        else:
-            enemy_damage = _calculate_enemy_damage(combat, guarded=False)
-            player_hp = max(0, player_hp - enemy_damage)
-            round_summary_parts.append(f"It lands for **{enemy_damage}** damage before you can reset.")
+            if round_outcome.resolution_type is None:
+                updated_session = replace(updated_session, turn_deadline_at=_build_timeout_deadline())
+                persisted = await update_active_combat(connection, fight_id=updated_session.fight_id, session=updated_session)
+                return CombatAdvanceResult(status="updated", combat=persisted)
 
-        updated_round = combat.round_number + 1
-        updated_combat = replace(
-            combat,
-            player_hp_current=player_hp,
-            round_number=updated_round,
-            last_round_summary=" ".join(round_summary_parts),
-            guard_active=False,
-        )
-        if player_hp <= 0:
-            return CombatAdvanceResult(
-                status="resolved",
-                outcome=_resolve_outcome(updated_combat, combat_outcome="Setback", round_summary=" ".join(round_summary_parts)),
+            if updated_session.source_kind == "exploration":
+                from src.services.exploration.rewards import finalize_combat_resolution
+
+                resolution = await finalize_combat_resolution(
+                    connection,
+                    combat=updated_session,
+                    base_xp=round_outcome.xp_reward,
+                    combat_outcome="Retreated" if round_outcome.resolution_type == "retreated" else ("Victory" if round_outcome.resolution_type == "victory" else "Setback"),
+                    title=round_outcome.resolution_title or updated_session.resolution_title,
+                    description=round_outcome.resolution_description or updated_session.resolution_description,
+                    reputation_change=updated_session.reputation_change,
+                )
+                await finalize_fight_log(connection, fight_log_id=updated_session.fight_log_id, outcome=round_outcome.resolution_type)
+                return CombatAdvanceResult(status="resolved", combat=updated_session, resolution=resolution, blackout_applied=round_outcome.resolution_type in {"defeat", "afk_defeat"})
+
+            player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if player_sync is None:
+                await delete_active_combat(connection, user_id)
+                await finalize_fight_log(connection, fight_log_id=updated_session.fight_log_id, outcome="missing_profile")
+                return CombatAdvanceResult(status="missing")
+
+            player = PlayerProfile.from_record(player_sync.record)
+            updates = {
+                "hp_current": project_profile_hp_from_combat(player, updated_session),
+                "mana_current": project_profile_mana_from_combat(player, updated_session),
+            }
+            blackout_applied = round_outcome.resolution_type in {"defeat", "afk_defeat"}
+            if blackout_applied:
+                updates["hp_current"] = 1
+                updates["location"] = RUKONGAI_STREETS.key
+                await grant_wounded_status(connection, user_id)
+            updated_player_record = await update_player_record(connection, user_id, updates)
+            updated_player = PlayerProfile.from_record(updated_player_record)
+            await delete_active_combat(connection, user_id)
+            await finalize_fight_log(connection, fight_log_id=updated_session.fight_log_id, outcome=round_outcome.resolution_type)
+            from src.ui.exploration_combat_view import build_fight_result_embed
+
+            result_embed = build_fight_result_embed(
+                combat=updated_session,
+                player=updated_player,
+                outcome=round_outcome.resolution_type,
+                title=round_outcome.resolution_title or updated_session.resolution_title,
+                description=round_outcome.resolution_description or updated_session.resolution_description,
             )
-        return CombatAdvanceResult(status="updated", combat=updated_combat)
+            return CombatAdvanceResult(status="resolved", combat=updated_session, fight_embed=result_embed, blackout_applied=blackout_applied)
 
-    if action == "guard":
-        guard_active = True
-        round_summary_parts.append("You tighten your stance and let the enemy crash into a guarded frame.")
-    elif action == "focus":
-        mana_gain = min(combat.player_mana_max - player_mana, 4 + max(1, combat.player_reiatsu // 5))
-        player_mana += mana_gain
-        focus_bonus = 3 + max(1, combat.player_reiatsu // 6)
-        if mana_gain > 0:
-            round_summary_parts.append(
-                f"You gather your breathing and reiatsu, restoring **{mana_gain} mana** for the next exchange."
-            )
-        else:
-            round_summary_parts.append("You draw your focus inward and line up a harder hit for the next opening.")
 
-    player_acts_first = action != "attack" or _roll_initiative(combat)
-    player_attack_consumed = False
+async def _disable_old_combat_message(message: discord.Message | None) -> None:
+    if message is None:
+        return
+    try:
+        await message.edit(view=None)
+    except discord.HTTPException:
+        pass
 
-    def _player_attack() -> None:
-        nonlocal enemy_hp, focus_bonus, player_attack_consumed
-        if _roll_dodge(attacker_speed=combat.player_speed, defender_speed=combat.enemy_speed):
-            round_summary_parts.append(f"**{combat.enemy_name}** slips the angle and your hit glances wide.")
-        else:
-            player_damage = _calculate_player_damage(
-                replace(combat, focus_bonus=focus_bonus)
-            )
-            enemy_hp = max(0, enemy_hp - player_damage)
-            round_summary_parts.append(f"You strike for **{player_damage}** damage.")
-        if focus_bonus > 0:
-            player_attack_consumed = True
-            focus_bonus = 0
 
-    def _enemy_attack() -> None:
-        nonlocal player_hp
-        if _roll_dodge(attacker_speed=combat.enemy_speed, defender_speed=combat.player_speed):
-            round_summary_parts.append("You slip the worst of the counter before it can settle clean.")
-            return
-        enemy_damage = _calculate_enemy_damage(combat, guarded=guard_active)
-        player_hp = max(0, player_hp - enemy_damage)
-        round_summary_parts.append(f"**{combat.enemy_name}** answers with **{enemy_damage}** damage.")
+async def _post_active_combat_message(
+    bot: "BleachBot",
+    combat: CombatSession,
+    *,
+    discord_user: discord.abc.User | None = None,
+    old_message: discord.Message | None = None,
+) -> CombatSession | None:
+    from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
 
-    if action == "attack" and player_acts_first:
-        _player_attack()
-        if enemy_hp <= 0:
-            updated_combat = replace(
-                combat,
-                enemy_hp_current=enemy_hp,
-                player_hp_current=player_hp,
-                player_mana_current=player_mana,
-                focus_bonus=focus_bonus,
-                guard_active=False,
-                last_round_summary=" ".join(round_summary_parts),
-            )
-            return CombatAdvanceResult(
-                status="resolved",
-                outcome=_resolve_outcome(updated_combat, combat_outcome="Victory", round_summary=" ".join(round_summary_parts)),
-            )
+    channel = bot.get_channel(combat.channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(combat.channel_id)
+        except discord.HTTPException:
+            logging.exception("Could not fetch channel %s for combat.", combat.channel_id)
+            return None
 
-    _enemy_attack()
-    if player_hp <= 0:
-        updated_combat = replace(
-            combat,
-            enemy_hp_current=enemy_hp,
-            player_hp_current=player_hp,
-            player_mana_current=player_mana,
-            focus_bonus=focus_bonus,
-            guard_active=False,
-            last_round_summary=" ".join(round_summary_parts),
-        )
-        return CombatAdvanceResult(
-            status="resolved",
-            outcome=_resolve_outcome(updated_combat, combat_outcome="Setback", round_summary=" ".join(round_summary_parts)),
-        )
+    if not hasattr(channel, "send"):
+        return None
 
-    if action == "attack" and not player_acts_first:
-        _player_attack()
-        if enemy_hp <= 0:
-            updated_combat = replace(
-                combat,
-                enemy_hp_current=enemy_hp,
-                player_hp_current=player_hp,
-                player_mana_current=player_mana,
-                focus_bonus=focus_bonus,
-                guard_active=False,
-                last_round_summary=" ".join(round_summary_parts),
-            )
-            return CombatAdvanceResult(
-                status="resolved",
-                outcome=_resolve_outcome(updated_combat, combat_outcome="Victory", round_summary=" ".join(round_summary_parts)),
-            )
+    if discord_user is None:
+        if isinstance(channel, (discord.TextChannel, discord.Thread)):
+            discord_user = channel.guild.get_member(combat.user_id)
+        if discord_user is None:
+            discord_user = bot.get_user(combat.user_id)
+        if discord_user is None:
+            try:
+                discord_user = await bot.fetch_user(combat.user_id)
+            except discord.HTTPException:
+                discord_user = None
 
-    updated_round = combat.round_number + 1
-    updated_combat = replace(
-        combat,
-        enemy_hp_current=enemy_hp,
-        player_hp_current=player_hp,
-        player_mana_current=player_mana,
-        focus_bonus=focus_bonus,
-        guard_active=False,
-        round_number=updated_round,
-        last_round_summary=" ".join(round_summary_parts),
+    await _disable_old_combat_message(old_message)
+    view = ExplorationCombatView(bot, combat)
+    embed = build_exploration_combat_embed(combat, discord_user)
+    message = await channel.send(content=f"<@{combat.user_id}>", embed=embed, view=view)
+    rebound = await bind_combat_message(bot.db_pool, fight_id=combat.fight_id, message_id=message.id)
+    if rebound is None:
+        return None
+    schedule_combat_task(bot, rebound)
+    return rebound
+
+
+async def resolve_and_post_combat_action(
+    bot: "BleachBot",
+    *,
+    message_id: int,
+    user_id: int,
+    action: CombatAction,
+    ability_key: str | None = None,
+    old_message: discord.Message | None = None,
+) -> CombatAdvanceResult:
+    result = await _advance_combat(
+        bot.db_pool,
+        message_id=message_id,
+        user_id=user_id,
+        choice=CombatChoice(action=action, ability_key=ability_key),
+    )
+    if result.status == "updated" and result.combat is not None:
+        await _post_active_combat_message(bot, result.combat, old_message=old_message)
+        return result
+    if result.status == "resolved" and result.resolution is not None:
+        await _disable_old_combat_message(old_message)
+        channel = None if old_message is None else old_message.channel
+        if channel is None and result.combat is not None:
+            channel = bot.get_channel(result.combat.channel_id)
+        if channel is not None and hasattr(channel, "send"):
+            from src.services.exploration.posting import post_exploration_result
+
+            await post_exploration_result(bot, result.resolution)
+            if result.blackout_applied:
+                await _sync_blackout_location_role(bot, result.combat.user_id)
+        return result
+    if result.status == "resolved" and result.fight_embed is not None and result.combat is not None:
+        await _disable_old_combat_message(old_message)
+        channel = None if old_message is None else old_message.channel
+        if channel is None:
+            channel = bot.get_channel(result.combat.channel_id)
+        if channel is not None and hasattr(channel, "send"):
+            await channel.send(content=f"<@{result.combat.user_id}>", embed=result.fight_embed)
+        if result.blackout_applied:
+            await _sync_blackout_location_role(bot, result.combat.user_id)
+        return result
+    return result
+
+
+async def advance_combat_state(
+    pool: Pool | None,
+    *,
+    message_id: int,
+    user_id: int,
+    action: CombatAction,
+    ability_key: str | None = None,
+) -> CombatAdvanceResult:
+    return await _advance_combat(
+        pool,
+        message_id=message_id,
+        user_id=user_id,
+        choice=CombatChoice(action=action, ability_key=ability_key),
     )
 
-    return CombatAdvanceResult(status="updated", combat=updated_combat)
+
+async def _sync_blackout_location_role(bot: "BleachBot", user_id: int) -> None:
+    guilds = bot.guilds
+    for guild in guilds:
+        member = guild.get_member(user_id)
+        if member is None:
+            continue
+        try:
+            await sync_member_location_role(member, get_location_definition(RUKONGAI_STREETS.key), reason="Combat blackout")
+        except Exception:
+            logging.exception("Failed to sync blackout location role for user %s.", user_id)
+        return
+
+
+async def _run_combat_task(bot: "BleachBot", user_id: int, fight_id: int) -> None:
+    try:
+        while True:
+            combat = await get_active_combat(bot.db_pool, user_id)
+            if combat is None or combat.fight_id != fight_id:
+                break
+            delay = (combat.turn_deadline_at - datetime.now(timezone.utc)).total_seconds()
+            if delay > 0:
+                await asyncio.sleep(delay + 0.25)
+            combat = await get_active_combat(bot.db_pool, user_id)
+            if combat is None or combat.fight_id != fight_id:
+                break
+            if combat.turn_deadline_at > datetime.now(timezone.utc):
+                continue
+            if combat.message_id is None:
+                break
+            await resolve_and_post_combat_action(
+                bot,
+                message_id=combat.message_id,
+                user_id=user_id,
+                action="afk_skip",
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logging.exception("Unexpected combat task failure for user %s.", user_id)
+    finally:
+        bot.combat_tasks.pop(user_id, None)
+
+
+def schedule_combat_task(bot: "BleachBot", combat: CombatSession) -> None:
+    existing = bot.combat_tasks.get(combat.user_id)
+    if existing is not None:
+        existing.cancel()
+    bot.combat_tasks[combat.user_id] = asyncio.create_task(_run_combat_task(bot, combat.user_id, combat.fight_id))
+
+
+async def restore_combat_tasks(bot: "BleachBot") -> None:
+    active_combats = await list_active_combats(bot.db_pool)
+    for combat in active_combats:
+        await _post_active_combat_message(bot, combat)
+
+
+async def post_combat_prompt(
+    bot: "BleachBot",
+    combat: CombatSession,
+) -> None:
+    await _post_active_combat_message(bot, combat)
+
+
+async def start_fight_test(
+    pool: Pool | None,
+    *,
+    user_id: int,
+    channel_id: int,
+) -> StartFightTestResult:
+    if pool is None:
+        return StartFightTestResult(status="missing_profile")
+
+    from src.services.exploration_service import fetch_active_exploration_record, fetch_pending_choice_record
+    from src.services.training_service import fetch_active_training_record
+    from src.services.travel_service import fetch_active_travel_record
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if player_sync is None:
+                return StartFightTestResult(status="missing_profile")
+            player = PlayerProfile.from_record(player_sync.record)
+            if player.is_resting:
+                return StartFightTestResult(status="resting", player=player)
+            if await fetch_active_combat_record(connection, user_id, for_update=True) is not None:
+                return StartFightTestResult(status="active_combat", player=player)
+            if await fetch_active_exploration_record(connection, user_id, for_update=True) is not None:
+                return StartFightTestResult(status="busy", player=player, reason="Finish your exploration first.")
+            if await fetch_pending_choice_record(connection, user_id, for_update=True) is not None:
+                return StartFightTestResult(status="busy", player=player, reason="A pending exploration choice is waiting.")
+            if await fetch_active_training_record(connection, user_id, for_update=True) is not None:
+                return StartFightTestResult(status="busy", player=player, reason="Finish your training first.")
+            if await fetch_active_travel_record(connection, user_id, for_update=True) is not None:
+                return StartFightTestResult(status="busy", player=player, reason="Finish your travel first.")
+
+            active_effects = await list_active_player_effects_for_connection(connection, user_id)
+            snapshot = build_effective_combat_snapshot(player, active_effects)
+            enemy = get_enemy_for_exploration_combat(player.location, encounter_title="Fight Test", approach_risk="medium")
+            fight_log = await create_fight_log(
+                connection,
+                user_id=user_id,
+                source_kind="fighttest",
+                readable_log=_build_initial_log_text(player, enemy, "fighttest"),
+            )
+            combat = await create_active_combat(
+                connection,
+                fight_log_id=fight_log.fight_log_id,
+                user_id=user_id,
+                channel_id=channel_id,
+                message_id=None,
+                source_kind="fighttest",
+                location=player.location,
+                approach="fighttest",
+                encounter_title="Combat Test - Generic Level 1 Bandit",
+                encounter_description="A live combat drill snaps into place so you can test the system under pressure.",
+                resolution_title="You Put the Bandit Down",
+                resolution_description="The test fight settles cleanly. You stay standing, the bandit does not, and the system has another round of data to chew on.",
+                reward_xp_win=0,
+                reward_xp_lose=0,
+                reputation_change=0,
+                player=_build_player_entity(player, snapshot),
+                enemies=(_build_enemy_entity(enemy),),
+            )
+            await bind_fight_log_to_fight(connection, fight_log_id=fight_log.fight_log_id, fight_id=combat.fight_id)
+            return StartFightTestResult(status="started", player=player, combat=combat)
+
+
+async def build_fight_log_file(pool: Pool | None, fight_log_id: int) -> tuple[str, io.BytesIO] | None:
+    record = await get_fight_log(pool, fight_log_id)
+    if record is None:
+        return None
+    payload = record.readable_log.strip() + "\n"
+    return f"fightlog-{fight_log_id}.txt", io.BytesIO(payload.encode("utf-8"))

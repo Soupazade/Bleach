@@ -45,6 +45,7 @@ from src.services.reputation_service import (
     get_location_reputation_title,
     get_location_reputation_value,
 )
+from src.services.status_service import is_player_wounded_for_connection
 from src.services.travel_service import fetch_active_travel_record
 
 if TYPE_CHECKING:
@@ -86,6 +87,7 @@ class StartTrainingResult:
         "active_travel",
         "invalid_selection",
         "wrong_location",
+        "wounded",
     ]
     player: PlayerProfile | None = None
     training: ActiveTraining | None = None
@@ -289,6 +291,9 @@ async def start_training(
             player = PlayerProfile.from_record(player_sync.record)
             if player.is_resting:
                 return StartTrainingResult(status="resting", player=player)
+
+            if await is_player_wounded_for_connection(connection, user_id, for_update=True):
+                return StartTrainingResult(status="wounded", player=player)
 
             if player.location != TRAINING_YARD_LOCATION_KEY:
                 return StartTrainingResult(status="wrong_location", player=player)

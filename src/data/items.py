@@ -14,6 +14,7 @@ class ItemDefinition:
     usable: bool = False
     use_out_of_combat_only: bool = False
     heal_hp_pct: int = 0
+    restore_stamina_flat: int = 0
 
 
 BANDAGES = ItemDefinition(
@@ -46,11 +47,24 @@ FOOD_SCRAPS = ItemDefinition(
     stackable=True,
 )
 
+RATION_PACK = ItemDefinition(
+    key="ration_pack",
+    name="Ration Pack",
+    description="A tightly bundled meal put together from whatever could be salvaged and kept edible.",
+    item_type="supply",
+    rarity="common",
+    stackable=True,
+    usable=True,
+    use_out_of_combat_only=True,
+    restore_stamina_flat=10,
+)
+
 
 ITEM_DEFINITIONS: dict[str, ItemDefinition] = {
     BANDAGES.key: BANDAGES,
     CLOTH_SCRAPS.key: CLOTH_SCRAPS,
     FOOD_SCRAPS.key: FOOD_SCRAPS,
+    RATION_PACK.key: RATION_PACK,
 }
 
 

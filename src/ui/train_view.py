@@ -325,6 +325,14 @@ def build_training_resting_embed(rest_message: str) -> discord.Embed:
     return build_training_blocked_embed("🏋 You Are Resting", rest_message, kind="explore")
 
 
+def build_training_wounded_embed() -> discord.Embed:
+    return build_training_blocked_embed(
+        "Training Is Blocked | Wounded",
+        "You are still carrying the aftermath of a blackout. Let the wound settle before you step back into the yard.",
+        kind="combat",
+    )
+
+
 def build_training_insufficient_stamina_embed(
     current_stamina: int,
     stamina_max: int,
@@ -589,6 +597,14 @@ class TrainingSetupView(discord.ui.View):
                 embed=build_training_resting_embed(
                     build_resting_block_message(result.player, rest_status)
                 ),
+                view=None,
+            )
+            return
+
+        if result.status == "wounded":
+            self.stop()
+            await interaction.message.edit(
+                embed=build_training_wounded_embed(),
                 view=None,
             )
             return

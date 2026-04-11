@@ -19,6 +19,7 @@ from src.ui.explore_embed_style import (
     format_option_preview,
     get_explore_color,
 )
+from src.services.combat_service import schedule_combat_task
 from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
 
 if TYPE_CHECKING:
@@ -194,9 +195,10 @@ class ExplorationChoiceView(discord.ui.View):
             return
 
         if result.status == "combat" and result.combat is not None:
+            schedule_combat_task(self.bot, result.combat)
             await interaction.response.edit_message(
                 embed=build_exploration_combat_embed(result.combat, interaction.user),
-                view=ExplorationCombatView(self.bot),
+                view=ExplorationCombatView(self.bot, result.combat),
             )
             return
 

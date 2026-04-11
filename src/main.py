@@ -8,10 +8,12 @@ from dotenv import load_dotenv
 
 from src.commands import register_commands
 from src.database import create_pool, ensure_schema
+from src.services.combat_service import get_active_exploration_combat, restore_combat_tasks
 from src.services.exploration_service import restore_exploration_tasks
 from src.services.training_service import restore_training_tasks
 from src.services.travel_service import restore_travel_tasks
 from src.ui.exploration_combat_view import ExplorationCombatView
+from src.ui.exploration_combat_view import build_active_combat_embed
 from src.ui.exploration_choice_view import ExplorationChoiceView
 
 
@@ -31,14 +33,38 @@ logging.getLogger("discord.client").addFilter(IgnoreDiscordNoise())
 load_dotenv()
 
 
+class BleachCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        client = self.client
+        if not isinstance(client, BleachBot) or client.db_pool is None:
+            return True
+
+        active_combat = await get_active_exploration_combat(client.db_pool, interaction.user.id)
+        if active_combat is None:
+            return True
+
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                embed=build_active_combat_embed(active_combat, interaction.user),
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                embed=build_active_combat_embed(active_combat, interaction.user),
+                ephemeral=True,
+            )
+        return False
+
+
 class BleachBot(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         super().__init__(intents=intents)
         self.db_pool = None
         self.guild_id = self._parse_guild_id()
-        self.tree = app_commands.CommandTree(self)
+        self.tree = BleachCommandTree(self)
         self.exploration_tasks: dict[int, asyncio.Task] = {}
+        self.combat_tasks: dict[int, asyncio.Task] = {}
         self.training_tasks: dict[int, asyncio.Task] = {}
         self.travel_tasks: dict[int, asyncio.Task] = {}
         self.recent_combat_resolutions: dict[int, object] = {}
@@ -59,8 +85,8 @@ class BleachBot(discord.Client):
         self.db_pool = await create_pool()
         await ensure_schema(self.db_pool)
         self.add_view(ExplorationChoiceView(self))
-        self.add_view(ExplorationCombatView(self))
         await restore_exploration_tasks(self)
+        await restore_combat_tasks(self)
         await restore_training_tasks(self)
         await restore_travel_tasks(self)
 
@@ -82,12 +108,15 @@ class BleachBot(discord.Client):
     async def close(self) -> None:
         for task in self.exploration_tasks.values():
             task.cancel()
+        for task in self.combat_tasks.values():
+            task.cancel()
         for task in self.training_tasks.values():
             task.cancel()
         for task in self.travel_tasks.values():
             task.cancel()
 
         self.exploration_tasks.clear()
+        self.combat_tasks.clear()
         self.training_tasks.clear()
         self.travel_tasks.clear()
         if self.db_pool is not None:

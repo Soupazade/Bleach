@@ -14,6 +14,7 @@ from src.services.exploration.repository import (
     fetch_pending_choice_record,
 )
 from src.services.exploration.rewards import apply_location_stamina_cost_modifier
+from src.services.status_service import is_player_wounded_for_connection
 from src.services.exploration.types import StartExplorationResult
 from src.services.player_service import get_or_sync_player_record, update_player_record
 
@@ -72,12 +73,20 @@ async def start_exploration(
                 player.location,
                 approach.stamina_cost,
             )
+            duration_minutes = approach.duration_minutes
+            wounded_penalty = await is_player_wounded_for_connection(connection, user_id, for_update=True)
+            if wounded_penalty:
+                stamina_cost *= 2
+                duration_minutes *= 2
             if player.stamina_current < stamina_cost:
                 return StartExplorationResult(
                     status="insufficient_stamina",
                     player=player,
                     stamina_cost=stamina_cost,
                     base_stamina_cost=approach.stamina_cost,
+                    duration_minutes=duration_minutes,
+                    base_duration_minutes=approach.duration_minutes,
+                    wounded_penalty=wounded_penalty,
                 )
 
             updated_player_record = await update_player_record(
@@ -97,7 +106,7 @@ async def start_exploration(
                 location=updated_player.location,
                 approach=approach.key,
                 start_time=now,
-                end_time=now.replace(microsecond=0) + timedelta(minutes=approach.duration_minutes),
+                end_time=now.replace(microsecond=0) + timedelta(minutes=duration_minutes),
             )
             return StartExplorationResult(
                 status="started",
@@ -105,4 +114,7 @@ async def start_exploration(
                 exploration=exploration,
                 stamina_cost=stamina_cost,
                 base_stamina_cost=approach.stamina_cost,
+                duration_minutes=duration_minutes,
+                base_duration_minutes=approach.duration_minutes,
+                wounded_penalty=wounded_penalty,
             )

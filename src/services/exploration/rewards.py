@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import random
 from typing import Any, Literal
 
@@ -23,13 +22,17 @@ from src.models.combat import ActiveExplorationCombat
 from src.models.effects import PlayerEffect
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
-from src.services.combat_service import create_active_exploration_combat, delete_active_exploration_combat
+from src.services.combat_service import (
+    create_active_exploration_combat,
+    delete_active_exploration_combat,
+    project_profile_hp_from_combat,
+    project_profile_mana_from_combat,
+)
 from src.services.effect_service import (
     apply_explore_xp_effects,
     build_effective_combat_snapshot,
     describe_effect_for_embed,
     get_blocked_stat_effect_types,
-    get_initial_combat_focus_bonus,
     get_special_trigger_bonus_pct,
     grant_player_effect,
     list_active_player_effects_for_connection,
@@ -51,6 +54,7 @@ from src.services.reputation_service import (
     get_location_reputation_value,
     get_reputation_modifiers,
 )
+from src.services.status_service import grant_wounded_status
 
 
 def _get_loot_definition(
@@ -628,13 +632,11 @@ async def start_instant_combat(
     )
     active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
     combat_snapshot = build_effective_combat_snapshot(player, active_effects)
-    initial_focus_bonus = get_initial_combat_focus_bonus(active_effects)
     return await create_active_exploration_combat(
         connection,
         exploration=exploration,
         player=player,
         combat_snapshot=combat_snapshot,
-        initial_focus_bonus=initial_focus_bonus,
         encounter_title=event.title,
         encounter_description=encounter_description,
         resolution_title=event.title,
@@ -677,13 +679,11 @@ async def start_decision_combat(
     )
     active_effects = await list_active_player_effects_for_connection(connection, player.user_id)
     combat_snapshot = build_effective_combat_snapshot(player, active_effects)
-    initial_focus_bonus = get_initial_combat_focus_bonus(active_effects)
     return await create_active_exploration_combat(
         connection,
         exploration=exploration,
         player=player,
         combat_snapshot=combat_snapshot,
-        initial_focus_bonus=initial_focus_bonus,
         encounter_title=encounter_title,
         encounter_description=encounter_description,
         resolution_title=resolution_title,
@@ -725,20 +725,22 @@ async def finalize_combat_resolution(
         reputation_change=reputation_change,
     )
 
+    blackout_applied = combat_outcome == "Setback"
     player_updates: dict[str, Any] = {
-        "hp_current": min(
-            combat.player_hp_max,
-            max(1 if combat_outcome == "Setback" else 0, combat.player_hp_current),
-        ),
-        "mana_current": max(0, min(combat.player_mana_current, player.mana_max)),
+        "hp_current": project_profile_hp_from_combat(player, combat),
+        "mana_current": project_profile_mana_from_combat(player, combat),
+        "has_minor_setback": False,
+        "setback_source": None,
+        "setback_at": None,
     }
-    if combat_outcome == "Setback":
-        # TODO: Let future status-effect systems consume and clear this setback hook.
-        player_updates["has_minor_setback"] = True
-        player_updates["setback_source"] = combat.encounter_title
-        player_updates["setback_at"] = datetime.now(timezone.utc)
+    if blackout_applied:
+        player_updates["hp_current"] = 1
+        player_updates["location"] = "rukongai_streets"
+
     updated_player_record = await update_player_record(connection, combat.user_id, player_updates)
     updated_player = PlayerProfile.from_record(updated_player_record)
+    if blackout_applied:
+        await grant_wounded_status(connection, combat.user_id)
     updated_player, applied_effect = await _apply_explore_bonus_effect(
         connection,
         updated_player,

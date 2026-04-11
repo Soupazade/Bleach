@@ -138,6 +138,49 @@ CREATE TABLE IF NOT EXISTS active_exploration_combats (
 );
 """
 
+CREATE_ACTIVE_COMBATS_TABLE = """
+CREATE TABLE IF NOT EXISTS active_combats (
+    fight_id BIGSERIAL PRIMARY KEY,
+    fight_log_id BIGINT NOT NULL,
+    user_id BIGINT UNIQUE NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT,
+    source_kind TEXT NOT NULL,
+    location TEXT NOT NULL,
+    approach TEXT NOT NULL,
+    encounter_title TEXT NOT NULL,
+    encounter_description TEXT NOT NULL,
+    resolution_title TEXT NOT NULL,
+    resolution_description TEXT NOT NULL,
+    reward_xp_win INTEGER NOT NULL DEFAULT 0,
+    reward_xp_lose INTEGER NOT NULL DEFAULT 0,
+    reputation_change INTEGER NOT NULL DEFAULT 0,
+    round_number INTEGER NOT NULL DEFAULT 1,
+    afk_skips INTEGER NOT NULL DEFAULT 0,
+    last_round_summary TEXT NOT NULL DEFAULT '',
+    turn_deadline_at TIMESTAMPTZ NOT NULL,
+    player_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+    enemies_state JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+CREATE_COMBAT_LOGS_TABLE = """
+CREATE TABLE IF NOT EXISTS combat_logs (
+    fight_log_id BIGSERIAL PRIMARY KEY,
+    fight_id BIGINT NOT NULL DEFAULT 0,
+    user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    source_kind TEXT NOT NULL,
+    outcome TEXT,
+    readable_log TEXT NOT NULL DEFAULT '',
+    turn_payloads JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finalized_at TIMESTAMPTZ
+);
+"""
+
 CREATE_PLAYER_NPC_PROGRESS_TABLE = """
 CREATE TABLE IF NOT EXISTS player_npc_progress (
     user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
@@ -249,6 +292,27 @@ CREATE_ACTIVE_EXPLORATION_COMBATS_MESSAGE_ID_INDEX = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_active_exploration_combats_message_id
 ON active_exploration_combats (message_id)
 WHERE message_id IS NOT NULL;
+"""
+
+CREATE_ACTIVE_COMBATS_MESSAGE_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_combats_message_id
+ON active_combats (message_id)
+WHERE message_id IS NOT NULL;
+"""
+
+CREATE_ACTIVE_COMBATS_USER_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_combats_user_id
+ON active_combats (user_id);
+"""
+
+CREATE_ACTIVE_COMBATS_DEADLINE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_active_combats_turn_deadline
+ON active_combats (turn_deadline_at);
+"""
+
+CREATE_COMBAT_LOGS_FIGHT_ID_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_combat_logs_fight_id
+ON combat_logs (fight_id);
 """
 
 ACTIVE_EXPLORATION_CHOICE_COLUMN_DEFAULTS = (
@@ -409,6 +473,12 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_ACTIVE_EXPLORATION_CHOICES_MESSAGE_ID_INDEX)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_COMBATS_TABLE)
         await connection.execute(CREATE_ACTIVE_EXPLORATION_COMBATS_MESSAGE_ID_INDEX)
+        await connection.execute(CREATE_ACTIVE_COMBATS_TABLE)
+        await connection.execute(CREATE_ACTIVE_COMBATS_MESSAGE_ID_INDEX)
+        await connection.execute(CREATE_ACTIVE_COMBATS_USER_ID_INDEX)
+        await connection.execute(CREATE_ACTIVE_COMBATS_DEADLINE_INDEX)
+        await connection.execute(CREATE_COMBAT_LOGS_TABLE)
+        await connection.execute(CREATE_COMBAT_LOGS_FIGHT_ID_INDEX)
         await connection.execute(CREATE_PLAYER_NPC_PROGRESS_TABLE)
         await connection.execute(CREATE_PLAYER_NPC_PROGRESS_LOOKUP_INDEX)
         await connection.execute(CREATE_PLAYER_EFFECTS_TABLE)

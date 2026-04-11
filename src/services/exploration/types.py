@@ -26,6 +26,9 @@ class StartExplorationResult:
     pending_choice: "ExplorationDecisionPrompt | None" = None
     stamina_cost: int = 0
     base_stamina_cost: int = 0
+    duration_minutes: int = 0
+    base_duration_minutes: int = 0
+    wounded_penalty: bool = False
 
 
 @dataclass(slots=True)

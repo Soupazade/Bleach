@@ -13,15 +13,10 @@ from src.data.exploration import (
 )
 from src.data.locations import get_location_definition
 from src.data.npcs import get_npc_definition
-from src.models.combat import ActiveExplorationCombat
 from src.models.exploration import PendingExplorationChoice
 from src.models.player import PlayerProfile
-from src.services.combat_service import (
-    CombatAction,
-    advance_combat_state,
-    fetch_active_combat_record_by_message,
-    update_active_exploration_combat,
-)
+from src.services.combat.types import CombatAction
+from src.services.combat_service import advance_combat_state
 from src.services.effect_service import list_active_player_effects_for_connection
 from src.services.exploration.repository import (
     delete_pending_choice,
@@ -33,9 +28,7 @@ from src.services.exploration.rewards import (
     _format_text,
     apply_location_stamina_cost_modifier,
     create_special_offer,
-    finalize_combat_resolution,
     finalize_non_combat_resolution,
-    get_combat_lose_profile,
     get_current_player,
     resolve_outcome_xp,
     should_trigger_special_opportunity,
@@ -115,7 +108,10 @@ def build_decision_prompt(
             approach=approach,
             location_name=location.name,
         )
-        description = f"{description}\n\n**{special_event.title}** is there if you are willing to spend {cost_line} and press your luck."
+        description = (
+            f"{description}\n\n**{special_event.title}** is there if you are willing to spend "
+            f"{cost_line} and press your luck."
+        )
         options = (
             ExplorationDecisionOptionRender(
                 slot=1,
@@ -309,7 +305,10 @@ async def advance_exploration_choice(
                         exploration=session.to_active_exploration(),
                         event_type=session.base_event_type or "reward",  # type: ignore[arg-type]
                         title=session.base_title or "Street Result",
-                        description=session.base_description or "The district gives you the original outcome and lets the rest pass.",
+                        description=(
+                            session.base_description
+                            or "The district gives you the original outcome and lets the rest pass."
+                        ),
                         base_xp=session.base_xp,
                         reputation_change=session.base_rep_change or 0,
                         combat_outcome=session.base_combat_outcome,
@@ -408,7 +407,6 @@ async def advance_exploration_choice(
             )
 
             if outcome.event_type == "combat":
-                lose_profile = get_combat_lose_profile(outcome.xp_profile)
                 combat = await start_decision_combat(
                     connection,
                     session=session,
@@ -419,7 +417,7 @@ async def advance_exploration_choice(
                     resolution_title=outcome.title,
                     resolution_description=formatted_outcome_description,
                     reward_xp_win=base_xp,
-                    reward_xp_lose=resolve_outcome_xp(approach, lose_profile),
+                    reward_xp_lose=5 if base_xp <= 0 else max(5, base_xp // 2),
                     reputation_change=outcome.reputation_change,
                     message_id=session.message_id,
                 )
@@ -474,61 +472,14 @@ async def advance_exploration_combat(
     user_id: int,
     action: CombatAction,
 ) -> ExplorationChoiceAdvanceResult:
-    if pool is None:
-        return ExplorationChoiceAdvanceResult(status="missing")
-
-    async with pool.acquire() as connection:
-        async with connection.transaction():
-            combat_record = await fetch_active_combat_record_by_message(connection, message_id, for_update=True)
-            if combat_record is None:
-                return ExplorationChoiceAdvanceResult(status="missing")
-
-            combat = ActiveExplorationCombat.from_record(combat_record)
-            if combat.user_id != user_id:
-                return ExplorationChoiceAdvanceResult(status="missing")
-
-            combat_step = advance_combat_state(combat, action)
-            if combat_step.status == "updated" and combat_step.combat is not None:
-                updated_combat = await update_active_exploration_combat(
-                    connection,
-                    user_id,
-                    {
-                        "enemy_hp_current": combat_step.combat.enemy_hp_current,
-                        "player_hp_current": combat_step.combat.player_hp_current,
-                        "player_mana_current": combat_step.combat.player_mana_current,
-                        "round_number": combat_step.combat.round_number,
-                        "focus_bonus": combat_step.combat.focus_bonus,
-                        "guard_active": combat_step.combat.guard_active,
-                        "last_round_summary": combat_step.combat.last_round_summary,
-                    },
-                )
-                return ExplorationChoiceAdvanceResult(status="updated", combat=updated_combat)
-
-            if combat_step.outcome is None:
-                return ExplorationChoiceAdvanceResult(status="missing")
-
-            outcome = combat_step.outcome
-            base_xp = outcome.xp_reward
-            resolved_combat = await update_active_exploration_combat(
-                connection,
-                user_id,
-                {
-                    "enemy_hp_current": outcome.combat.enemy_hp_current,
-                    "player_hp_current": outcome.player_hp_current,
-                    "player_mana_current": outcome.player_mana_current,
-                    "round_number": outcome.combat.round_number,
-                    "focus_bonus": outcome.combat.focus_bonus,
-                    "guard_active": outcome.combat.guard_active,
-                    "last_round_summary": outcome.combat.last_round_summary,
-                },
-            )
-            resolution = await finalize_combat_resolution(
-                connection,
-                combat=resolved_combat,
-                base_xp=base_xp,
-                combat_outcome=outcome.combat_outcome,
-                title=outcome.title,
-                description=outcome.description,
-                reputation_change=outcome.reputation_change,
-            )
-            return ExplorationChoiceAdvanceResult(status="resolved", resolution=resolution)
+    result = await advance_combat_state(
+        pool,
+        message_id=message_id,
+        user_id=user_id,
+        action=action,
+    )
+    if result.status == "updated" and result.combat is not None:
+        return ExplorationChoiceAdvanceResult(status="updated", combat=result.combat)
+    if result.status == "resolved" and result.resolution is not None:
+        return ExplorationChoiceAdvanceResult(status="resolved", resolution=result.resolution)
+    return ExplorationChoiceAdvanceResult(status="missing")

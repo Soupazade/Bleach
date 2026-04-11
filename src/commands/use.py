@@ -52,6 +52,7 @@ def register_use_command(bot: "BleachBot") -> None:
                     player=result.player,
                     item_definition=result.item_definition,
                     healed_amount=result.healed_amount,
+                    restored_stamina=result.restored_stamina,
                     quantity_remaining=result.quantity_remaining,
                 ),
                 ephemeral=True,
@@ -75,6 +76,17 @@ def register_use_command(bot: "BleachBot") -> None:
                     player=result.player,
                     item_definition=result.item_definition,
                     reason="Your HP is already full. There is no point wasting clean wraps right now.",
+                ),
+                ephemeral=True,
+            )
+            return
+
+        if result.status == "nothing_to_restore" and result.player is not None and result.item_definition is not None:
+            await interaction.response.send_message(
+                embed=build_item_use_empty_embed(
+                    player=result.player,
+                    item_definition=result.item_definition,
+                    reason="Your stamina is already full. Save the meal for when the streets actually wear you down.",
                 ),
                 ephemeral=True,
             )

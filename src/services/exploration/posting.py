@@ -8,11 +8,7 @@ import discord
 from src.data.exploration import get_explore_approach
 from src.data.locations import get_location_definition
 from src.models.combat import ActiveExplorationCombat
-from src.services.combat_service import (
-    delete_active_exploration_combat,
-    fetch_active_combat_record,
-    update_active_exploration_combat,
-)
+from src.services.combat_service import post_combat_prompt
 from src.services.exploration.repository import (
     delete_pending_choice,
     fetch_pending_choice_record,
@@ -49,14 +45,14 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         "flavor": get_explore_color("flavor"),
     }
     title_prefix = {
-        "reward": "🟩",
-        "choice": "🟨",
-        "combat": "⚔️",
-        "flavor": "⚪",
+        "reward": "Reward",
+        "choice": "Decision",
+        "combat": "Combat",
+        "flavor": "Street",
     }
-    embed_title = f"{title_prefix[resolution.event_type]} {resolution.title}"
+    embed_title = f"{title_prefix[resolution.event_type]} | {resolution.title}"
     if resolution.event_type == "combat" and resolution.combat_outcome is not None:
-        embed_title = f"⚔️ {resolution.combat_outcome} - {resolution.title}"
+        embed_title = f"Combat | {resolution.combat_outcome} | {resolution.title}"
 
     embed = discord.Embed(
         title=embed_title,
@@ -66,24 +62,24 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
     embed.add_field(
         name="This Run",
         value=build_explore_info_lines(
-            f"📍 Location: {location.name}",
-            f"🧭 Approach: {approach.label}",
-            f"⏱ Duration: {approach.duration_minutes} minutes",
-            f"🎭 Reputation: {reputation_title}",
+            f"Location: {location.name}",
+            f"Approach: {approach.label}",
+            f"Duration: {approach.duration_minutes} minutes",
+            f"Reputation: {reputation_title}",
         ),
         inline=True,
     )
     embed.add_field(
         name="What Came Of It",
         value=build_explore_info_lines(
-            "🎯 XP Gained: **"
+            "XP Gained: **"
             + str(resolution.xp_gained)
             + "**"
             + (f" {xp_modifier_text}" if xp_modifier_text is not None else "")
             + (f" {resolution.explore_xp_effect_text}" if resolution.explore_xp_effect_text is not None else ""),
-            f"📈 Level: **{resolution.player.level}**",
-            f"📈 XP Progress: **{resolution.player.xp}**",
-            f"🎭 Shift This Run: {format_reputation_change_text(resolution.reputation_change)}",
+            f"Level: **{resolution.player.level}**",
+            f"XP Progress: **{resolution.player.xp}**",
+            f"Reputation Shift: {format_reputation_change_text(resolution.reputation_change)}",
         ),
         inline=False,
     )
@@ -92,25 +88,18 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         embed.add_field(
             name="Combat Result",
             value=build_explore_info_lines(
-                f"⚔ Combat Result: **{resolution.combat_outcome}**",
-                f"🎭 Reputation: {reputation_title}",
+                f"Outcome: **{resolution.combat_outcome}**",
+                f"Reputation: {reputation_title}",
             ),
             inline=False,
         )
         embed.add_field(
             name="Resources",
             value=build_explore_info_lines(
-                f"❤️ HP Remaining: **{resolution.player.hp_current}/{resolution.player.hp_max}**",
-                f"🔷 Mana Remaining: **{resolution.player.mana_current}/{resolution.player.mana_max}**",
-                f"⚡ Stamina Used This Run: **{approach.stamina_cost}**",
+                f"HP Remaining: **{resolution.player.hp_current}/{resolution.player.hp_max}**",
+                f"Mana Remaining: **{resolution.player.mana_current}/{resolution.player.mana_max}**",
+                f"Stamina Used This Run: **{approach.stamina_cost}**",
             ),
-            inline=False,
-        )
-
-    if resolution.combat_outcome == "Setback" and resolution.player.has_minor_setback:
-        embed.add_field(
-            name="Status Effect",
-            value="✨ Minor Setback - a rough outcome is being carried forward for later systems.",
             inline=False,
         )
 
@@ -118,7 +107,7 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         embed.add_field(
             name="Status Effect",
             value=build_explore_info_lines(
-                f"✨ {resolution.applied_effect.title}",
+                resolution.applied_effect.title,
                 resolution.applied_effect.description,
                 resolution.applied_effect.summary_text,
             ),
@@ -129,7 +118,7 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         embed.add_field(
             name="Loot Found",
             value=build_explore_info_lines(
-                f"📦 {resolution.applied_loot.summary_text}",
+                resolution.applied_loot.summary_text,
                 resolution.applied_loot.description,
             ),
             inline=False,
@@ -138,7 +127,7 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
     if resolution.levels_gained > 0:
         embed.add_field(
             name="Level Up",
-            value=f"📈 Your spiritual pressure rises. You climbed **{resolution.levels_gained}** level(s).",
+            value=f"Your spiritual pressure rises. You climbed **{resolution.levels_gained}** level(s).",
             inline=False,
         )
 
@@ -234,71 +223,7 @@ async def post_exploration_combat_prompt(
     bot: "BleachBot",
     combat: ActiveExplorationCombat,
 ) -> None:
-    from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
-
-    async def _clear_active_combat() -> None:
-        if bot.db_pool is None:
-            return
-
-        async with bot.db_pool.acquire() as connection:
-            async with connection.transaction():
-                await delete_active_exploration_combat(connection, combat.user_id)
-
-    channel = bot.get_channel(combat.channel_id)
-    if channel is None:
-        try:
-            channel = await bot.fetch_channel(combat.channel_id)
-        except discord.HTTPException:
-            logging.exception(
-                "Could not fetch channel %s for exploration combat.",
-                combat.channel_id,
-            )
-            await _clear_active_combat()
-            return
-
-    if not hasattr(channel, "send"):
-        logging.warning("Channel %s is not messageable for exploration combat.", combat.channel_id)
-        await _clear_active_combat()
-        return
-
-    discord_user: discord.abc.User | None = None
-    if isinstance(channel, (discord.TextChannel, discord.Thread)):
-        discord_user = channel.guild.get_member(combat.user_id)
-    if discord_user is None:
-        discord_user = bot.get_user(combat.user_id)
-    if discord_user is None:
-        try:
-            discord_user = await bot.fetch_user(combat.user_id)
-        except discord.HTTPException:
-            discord_user = None
-
-    view = ExplorationCombatView(bot)
-    embed = build_exploration_combat_embed(combat, discord_user)
-    try:
-        message = await channel.send(
-            content=f"<@{combat.user_id}>",
-            embed=embed,
-            view=view,
-        )
-    except discord.HTTPException:
-        logging.exception("Failed to send exploration combat prompt for user %s.", combat.user_id)
-        await _clear_active_combat()
-        return
-
-    if bot.db_pool is None:
-        return
-
-    async with bot.db_pool.acquire() as connection:
-        async with connection.transaction():
-            combat_record = await fetch_active_combat_record(connection, combat.user_id, for_update=True)
-            if combat_record is None:
-                return
-
-            await update_active_exploration_combat(
-                connection,
-                combat.user_id,
-                {"message_id": message.id},
-            )
+    await post_combat_prompt(bot, combat)
 
 
 async def resolve_and_post_exploration(
