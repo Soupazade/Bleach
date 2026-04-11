@@ -8,7 +8,7 @@ import discord
 from src.data.exploration import get_explore_approach
 from src.data.locations import get_location_definition
 from src.models.combat import ActiveExplorationCombat
-from src.services.combat_service import post_combat_prompt
+from src.services.combat_service import bind_combat_message, schedule_combat_task
 from src.services.exploration.repository import (
     delete_pending_choice,
     fetch_pending_choice_record,
@@ -25,6 +25,37 @@ from src.ui.explore_embed_style import add_explore_divider, build_explore_info_l
 
 if TYPE_CHECKING:
     from src.main import BleachBot
+
+
+async def _get_messageable_channel(bot: "BleachBot", channel_id: int) -> discord.abc.Messageable | None:
+    channel = bot.get_channel(channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except discord.HTTPException:
+            logging.exception("Could not fetch channel %s for exploration posting.", channel_id)
+            return None
+
+    if not hasattr(channel, "send"):
+        logging.warning("Channel %s is not messageable for exploration posting.", channel_id)
+        return None
+
+    return channel
+
+
+async def _get_existing_exploration_message(
+    bot: "BleachBot",
+    *,
+    channel: discord.abc.Messageable,
+    user_id: int,
+) -> discord.Message | None:
+    message_id = bot.exploration_message_refs.get(user_id)
+    if message_id is None or not hasattr(channel, "fetch_message"):
+        return None
+    try:
+        return await channel.fetch_message(message_id)
+    except discord.HTTPException:
+        return None
 
 
 def build_exploration_result_embed(resolution: ExplorationResolution) -> discord.Embed:
@@ -137,26 +168,29 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
 
 
 async def post_exploration_result(bot: "BleachBot", resolution: ExplorationResolution) -> None:
-    channel = bot.get_channel(resolution.exploration.channel_id)
+    channel = await _get_messageable_channel(bot, resolution.exploration.channel_id)
     if channel is None:
-        try:
-            channel = await bot.fetch_channel(resolution.exploration.channel_id)
-        except discord.HTTPException:
-            logging.exception(
-                "Could not fetch channel %s for exploration result.",
-                resolution.exploration.channel_id,
-            )
-            return
-
-    if not hasattr(channel, "send"):
-        logging.warning("Channel %s is not messageable for exploration result.", resolution.exploration.channel_id)
         return
 
     embed = build_exploration_result_embed(resolution)
+    existing_message = await _get_existing_exploration_message(
+        bot,
+        channel=channel,
+        user_id=resolution.exploration.user_id,
+    )
     try:
-        await channel.send(content=f"<@{resolution.exploration.user_id}>", embed=embed)
+        if existing_message is not None:
+            await existing_message.edit(
+                content=f"<@{resolution.exploration.user_id}>",
+                embed=embed,
+                view=None,
+            )
+        else:
+            await channel.send(content=f"<@{resolution.exploration.user_id}>", embed=embed)
     except discord.HTTPException:
         logging.exception("Failed to send exploration result for user %s.", resolution.exploration.user_id)
+    finally:
+        bot.exploration_message_refs.pop(resolution.exploration.user_id, None)
 
 
 async def post_exploration_choice_prompt(
@@ -173,35 +207,38 @@ async def post_exploration_choice_prompt(
             async with connection.transaction():
                 await delete_pending_choice(connection, prompt.session.user_id)
 
-    channel = bot.get_channel(prompt.session.channel_id)
+    channel = await _get_messageable_channel(bot, prompt.session.channel_id)
     if channel is None:
-        try:
-            channel = await bot.fetch_channel(prompt.session.channel_id)
-        except discord.HTTPException:
-            logging.exception(
-                "Could not fetch channel %s for exploration choice.",
-                prompt.session.channel_id,
-            )
-            await _clear_pending_choice()
-            return
-
-    if not hasattr(channel, "send"):
-        logging.warning("Channel %s is not messageable for exploration choice.", prompt.session.channel_id)
         await _clear_pending_choice()
         return
 
     view = ExplorationChoiceView(bot, prompt)
     embed = build_exploration_choice_embed(prompt)
+    existing_message = await _get_existing_exploration_message(
+        bot,
+        channel=channel,
+        user_id=prompt.session.user_id,
+    )
     try:
-        message = await channel.send(
-            content=f"<@{prompt.session.user_id}>",
-            embed=embed,
-            view=view,
-        )
+        if existing_message is not None:
+            await existing_message.edit(
+                content=f"<@{prompt.session.user_id}>",
+                embed=embed,
+                view=view,
+            )
+            message = existing_message
+        else:
+            message = await channel.send(
+                content=f"<@{prompt.session.user_id}>",
+                embed=embed,
+                view=view,
+            )
     except discord.HTTPException:
         logging.exception("Failed to send exploration choice prompt for user %s.", prompt.session.user_id)
         await _clear_pending_choice()
         return
+
+    bot.exploration_message_refs[prompt.session.user_id] = message.id
 
     if bot.db_pool is None:
         return
@@ -223,7 +260,53 @@ async def post_exploration_combat_prompt(
     bot: "BleachBot",
     combat: ActiveExplorationCombat,
 ) -> None:
-    await post_combat_prompt(bot, combat)
+    from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
+
+    channel = await _get_messageable_channel(bot, combat.channel_id)
+    if channel is None:
+        return
+
+    discord_user: discord.abc.User | None = None
+    if isinstance(channel, (discord.TextChannel, discord.Thread)):
+        discord_user = channel.guild.get_member(combat.user_id)
+    if discord_user is None:
+        discord_user = bot.get_user(combat.user_id)
+    if discord_user is None:
+        try:
+            discord_user = await bot.fetch_user(combat.user_id)
+        except discord.HTTPException:
+            discord_user = None
+
+    view = ExplorationCombatView(bot, combat)
+    embed = build_exploration_combat_embed(combat, discord_user)
+    existing_message = await _get_existing_exploration_message(
+        bot,
+        channel=channel,
+        user_id=combat.user_id,
+    )
+
+    try:
+        if existing_message is not None:
+            await existing_message.edit(
+                content=f"<@{combat.user_id}>",
+                embed=embed,
+                view=view,
+            )
+            message = existing_message
+        else:
+            message = await channel.send(
+                content=f"<@{combat.user_id}>",
+                embed=embed,
+                view=view,
+            )
+    except discord.HTTPException:
+        logging.exception("Failed to send exploration combat prompt for user %s.", combat.user_id)
+        return
+
+    bot.exploration_message_refs[combat.user_id] = message.id
+    rebound = await bind_combat_message(bot.db_pool, fight_id=combat.fight_id, message_id=message.id)
+    if rebound is not None:
+        schedule_combat_task(bot, rebound)
 
 
 async def resolve_and_post_exploration(

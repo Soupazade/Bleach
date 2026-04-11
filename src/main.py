@@ -64,6 +64,7 @@ class BleachBot(discord.Client):
         self.guild_id = self._parse_guild_id()
         self.tree = BleachCommandTree(self)
         self.exploration_tasks: dict[int, asyncio.Task] = {}
+        self.exploration_message_refs: dict[int, int] = {}
         self.combat_tasks: dict[int, asyncio.Task] = {}
         self.training_tasks: dict[int, asyncio.Task] = {}
         self.travel_tasks: dict[int, asyncio.Task] = {}
@@ -116,6 +117,7 @@ class BleachBot(discord.Client):
             task.cancel()
 
         self.exploration_tasks.clear()
+        self.exploration_message_refs.clear()
         self.combat_tasks.clear()
         self.training_tasks.clear()
         self.travel_tasks.clear()

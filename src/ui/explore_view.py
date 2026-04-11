@@ -345,18 +345,28 @@ class ExploreView(discord.ui.View):
         if result.status == "started" and result.player is not None and result.exploration is not None:
             schedule_exploration_task(self.bot, result.exploration)
             self.stop()
+            started_embed = build_explore_started_embed(
+                result.player,
+                result.exploration,
+                stamina_cost=result.stamina_cost,
+                base_stamina_cost=result.base_stamina_cost,
+                duration_minutes=result.duration_minutes,
+                base_duration_minutes=result.base_duration_minutes,
+                wounded_penalty=result.wounded_penalty,
+            )
             await interaction.response.edit_message(
-                embed=build_explore_started_embed(
-                    result.player,
-                    result.exploration,
-                    stamina_cost=result.stamina_cost,
-                    base_stamina_cost=result.base_stamina_cost,
-                    duration_minutes=result.duration_minutes,
-                    base_duration_minutes=result.base_duration_minutes,
-                    wounded_penalty=result.wounded_penalty,
-                ),
+                embed=started_embed,
                 view=None,
             )
+            original_message = await interaction.original_response()
+            if original_message.flags.ephemeral and interaction.channel is not None and hasattr(interaction.channel, "send"):
+                public_message = await interaction.channel.send(
+                    content=f"<@{interaction.user.id}>",
+                    embed=started_embed,
+                )
+                self.bot.exploration_message_refs[interaction.user.id] = public_message.id
+            else:
+                self.bot.exploration_message_refs[interaction.user.id] = original_message.id
             return
 
         if result.status == "active" and result.player is not None and result.exploration is not None:
