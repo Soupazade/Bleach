@@ -316,6 +316,50 @@ async def accept_quest(
             return "accepted"
 
 
+async def reset_quest(
+    pool: Pool | None,
+    user_id: int,
+    quest_key: str,
+) -> str:
+    if pool is None:
+        return "missing_profile"
+
+    try:
+        get_quest_definition(quest_key)
+    except ValueError:
+        return "invalid_quest"
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if player_sync is None:
+                return "missing_profile"
+
+            existing_record = await fetch_player_quest_record(
+                connection,
+                user_id,
+                quest_key,
+                for_update=True,
+            )
+            if existing_record is None:
+                return "not_active"
+
+            existing = PlayerQuestRecord.from_record(existing_record)
+            if existing.status == "completed":
+                return "completed"
+
+            await connection.execute(
+                """
+                DELETE FROM player_quests
+                WHERE user_id = $1
+                  AND quest_key = $2
+                """,
+                user_id,
+                quest_key,
+            )
+            return "reset"
+
+
 async def _apply_quest_rewards(
     connection: Connection,
     *,

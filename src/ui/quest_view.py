@@ -13,6 +13,7 @@ from src.services.quest_service import (
     PlayerQuestEntry,
     accept_quest,
     get_player_quest_board,
+    reset_quest,
 )
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 
@@ -20,13 +21,46 @@ if TYPE_CHECKING:
     from src.main import BleachBot
 
 
-QuestBoardScreen = Literal["hub", "detail"]
+QuestBoardScreen = Literal["hub", "category", "detail"]
 
-STATE_EMOJIS = {
-    "available": "📜",
-    "active": "🟢",
-    "completed": "✅",
+CATEGORY_META: dict[QuestCategory, dict[str, str]] = {
+    "main": {
+        "emoji": "📘",
+        "title": "Main Quests",
+        "tagline": "The road that shapes your place in the world.",
+    },
+    "side": {
+        "emoji": "📗",
+        "title": "Side Quests",
+        "tagline": "Smaller jobs, rough favors, and trouble worth your time.",
+    },
+    "daily": {
+        "emoji": "📒",
+        "title": "Daily Quests",
+        "tagline": "Work that returns with the next hard day.",
+    },
+    "repeatable": {
+        "emoji": "📙",
+        "title": "Repeatable Quests",
+        "tagline": "Reliable grinds for souls who still need more.",
+    },
 }
+
+STATE_META = {
+    "available": {"emoji": "📜", "label": "Available"},
+    "active": {"emoji": "🟢", "label": "In Progress"},
+    "completed": {"emoji": "✅", "label": "Completed"},
+}
+
+BLEACH_QUOTES = (
+    '"If you are going to survive, move like your soul means it."',
+    '"The streets remember weakness faster than mercy."',
+    '"Every step in Rukongai costs something."',
+)
+
+
+def _state_text(entry: PlayerQuestEntry) -> str:
+    return STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})["label"]
 
 
 def _format_reward_lines(entry: PlayerQuestEntry) -> str:
@@ -67,15 +101,6 @@ def _format_step_progress(entry: PlayerQuestEntry) -> str:
     return "\n".join(lines)
 
 
-def _describe_entry(entry: PlayerQuestEntry) -> str:
-    if entry.state == "completed":
-        return "Completed"
-    if entry.state == "active":
-        step = entry.quest.steps[min(entry.current_step_index, len(entry.quest.steps) - 1)]
-        return f"Active: {step.title}"[:100]
-    return "Available to accept"
-
-
 def _get_default_quest_key(board: PlayerQuestBoard, category: QuestCategory) -> str | None:
     entries = board.quests_by_category.get(category, [])
     if not entries:
@@ -86,98 +111,103 @@ def _get_default_quest_key(board: PlayerQuestBoard, category: QuestCategory) -> 
     return entries[0].quest.key
 
 
-def _get_selected_entry(board: PlayerQuestBoard, category: QuestCategory, quest_key: str | None) -> PlayerQuestEntry | None:
+def _get_selected_entry(
+    board: PlayerQuestBoard,
+    category: QuestCategory,
+    quest_key: str | None,
+) -> PlayerQuestEntry | None:
     entries = board.quests_by_category.get(category, [])
     if not entries:
         return None
     return next((entry for entry in entries if entry.quest.key == quest_key), entries[0])
 
 
-def _build_category_summary(board: PlayerQuestBoard) -> str:
-    lines: list[str] = []
-    for category in QUEST_CATEGORY_ORDER:
-        entries = board.quests_by_category.get(category, [])
-        active_count = sum(1 for entry in entries if entry.state == "active")
-        available_count = sum(1 for entry in entries if entry.state == "available")
-        completed_count = sum(1 for entry in entries if entry.state == "completed")
-        lines.append(
-            f"• **{QUEST_CATEGORY_LABELS[category]}**: {len(entries)} total | "
-            f"{active_count} active | {available_count} available | {completed_count} complete"
-        )
-    return "\n".join(lines)
-
-
-def build_quest_hub_embed(
-    board: PlayerQuestBoard,
-    *,
-    selected_category: QuestCategory,
-    selected_quest_key: str | None,
-) -> discord.Embed:
-    entries = board.quests_by_category.get(selected_category, [])
+def build_quest_hub_embed(board: PlayerQuestBoard) -> discord.Embed:
     embed = discord.Embed(
-        title="🗺️ Quest Board",
+        title="🗂️ Soul Assignment Ledger",
         description=(
-            "Browse the work available to your soul, pick a quest, and open its briefing before you accept it."
+            "The board is rough, the ink is fading, and none of the work on it looks clean.\n"
+            "Pick a quest board and see what kind of road is open to you."
         ),
         color=get_explore_color("explore"),
     )
     embed.add_field(
-        name="👤 Soul Record",
-        value=build_explore_info_lines(
-            f"Level: **{board.player.level}**",
-            f"Location: **{board.player.location_data.name}**",
-            f"Unspent Stat Points: **{board.player.unspent_stat_points}**",
+        name="🧭 Available Boards",
+        value="\n".join(
+            f"{CATEGORY_META[category]['emoji']} **{CATEGORY_META[category]['title']}**\n"
+            f"{CATEGORY_META[category]['tagline']}"
+            for category in QUEST_CATEGORY_ORDER
         ),
         inline=False,
     )
     embed.add_field(
-        name="📚 Categories",
-        value=_build_category_summary(board),
+        name="🗨️ Street Wisdom",
+        value=build_explore_info_lines(
+            f"Level: **{board.player.level}**",
+            BLEACH_QUOTES[0],
+        ),
         inline=False,
+    )
+    add_explore_divider(embed)
+    embed.set_footer(text="Choose a board from the dropdown to start browsing.")
+    return embed
+
+
+def build_category_embed(board: PlayerQuestBoard, category: QuestCategory) -> discord.Embed:
+    meta = CATEGORY_META[category]
+    entries = board.quests_by_category.get(category, [])
+    embed = discord.Embed(
+        title=f"{meta['emoji']} {meta['title']}",
+        description=meta["tagline"],
+        color=get_explore_color("choice"),
     )
 
     if not entries:
         embed.add_field(
-            name=f"🧭 {QUEST_CATEGORY_LABELS[selected_category]}",
-            value="Nothing is available in this category yet.",
+            name="📭 Nothing Posted",
+            value="There are no quests waiting in this section right now.",
             inline=False,
         )
     else:
-        quest_lines = []
+        lines: list[str] = []
         for entry in entries:
-            emoji = STATE_EMOJIS.get(entry.state, "📜")
-            marker = "👉 " if entry.quest.key == selected_quest_key else ""
-            quest_lines.append(f"{marker}{emoji} **{entry.quest.title}**")
-            quest_lines.append(f"   {_describe_entry(entry)}")
+            state = STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})
+            lines.append(
+                f"{state['emoji']} **{entry.quest.title}**\n"
+                f"Req. Level: **{entry.quest.min_level}** | Status: **{state['label']}**"
+            )
         embed.add_field(
-            name=f"🧭 {QUEST_CATEGORY_LABELS[selected_category]}",
-            value="\n".join(quest_lines),
+            name="📜 Posted Quests",
+            value="\n\n".join(lines),
             inline=False,
         )
 
+    embed.add_field(
+        name="🗨️ Kaito's Kind of Advice",
+        value=BLEACH_QUOTES[1],
+        inline=False,
+    )
     add_explore_divider(embed)
-    embed.set_footer(text="Pick a category, choose a quest, then open its briefing.")
+    embed.set_footer(text="Choose a quest below to inspect its briefing.")
     return embed
 
 
 def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -> discord.Embed:
-    color = get_explore_color("reward" if entry.state == "completed" else "choice")
+    meta = CATEGORY_META[category]
+    state = STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})
+    color_key = "reward" if entry.state == "completed" else "choice"
     embed = discord.Embed(
-        title=f"📖 {QUEST_CATEGORY_LABELS[category][:-1]} | {entry.quest.title}",
+        title=f"{meta['emoji']} {entry.quest.title}",
         description=entry.quest.short_description,
-        color=color,
+        color=get_explore_color(color_key),
     )
-    status_line = {
-        "available": "📜 Available",
-        "active": "🟢 Active",
-        "completed": "✅ Completed",
-    }.get(entry.state, entry.state.title())
     embed.add_field(
-        name="📌 Quest Status",
+        name="📌 Briefing",
         value=build_explore_info_lines(
-            f"Status: {status_line}",
+            f"Status: {state['emoji']} **{state['label']}**",
             f"Guide: **{entry.quest.guide_name}**",
-            f"Steps: **{len(entry.quest.steps)}**",
+            f"Required Level: **{entry.quest.min_level}**",
+            f"Total Steps: **{len(entry.quest.steps)}**",
         ),
         inline=False,
     )
@@ -189,29 +219,28 @@ def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -
 
     if entry.state == "completed":
         embed.add_field(
-            name="💬 Final Words",
+            name="💬 Closing Words",
             value=entry.quest.completion_text,
             inline=False,
         )
         embed.add_field(
-            name="🎁 Completion Rewards",
+            name="🎁 Rewards",
             value=_format_reward_lines(entry),
             inline=False,
         )
         add_explore_divider(embed)
-        embed.set_footer(text="This quest is already finished.")
+        embed.set_footer(text='Completed. "Once a road is walked, it stays under your feet."')
         return embed
 
     current_step_index = 0 if entry.state == "available" else min(entry.current_step_index, len(entry.quest.steps) - 1)
     current_step = entry.quest.steps[current_step_index]
-    step_label = "First Step" if entry.state == "available" else f"Current Step {current_step_index + 1}"
     embed.add_field(
-        name=f"💬 {step_label}",
+        name="💬 Story",
         value=current_step.narrative_prompt,
         inline=False,
     )
     embed.add_field(
-        name="⚙️ What This Teaches",
+        name="⚙️ What You'll Learn",
         value="\n".join(f"• {line}" for line in current_step.system_explanation),
         inline=False,
     )
@@ -227,9 +256,9 @@ def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -
     )
     add_explore_divider(embed)
     if entry.state == "available":
-        embed.set_footer(text="Accept this quest to make its objectives count.")
+        embed.set_footer(text='Accept to begin. "A mission means nothing until someone steps into it."')
     else:
-        embed.set_footer(text="Only the active step counts toward quest progress.")
+        embed.set_footer(text='You can reset this unfinished quest if it gets stuck, then accept it again fresh.')
     return embed
 
 
@@ -241,7 +270,7 @@ def build_quest_update_embed(update: QuestProgressUpdate) -> discord.Embed:
             color=get_explore_color("reward"),
         )
         embed.add_field(
-            name="🎁 Rewards",
+            name="🎁 Rewards Claimed",
             value=_format_granted_reward_lines(update),
             inline=False,
         )
@@ -251,13 +280,13 @@ def build_quest_update_embed(update: QuestProgressUpdate) -> discord.Embed:
             inline=False,
         )
         add_explore_divider(embed)
-        embed.set_footer(text="Kaito is taking you a little more seriously now.")
+        embed.set_footer(text='Kaito has seen enough to stop doubting your first steps.')
         return embed
 
     current_step = update.quest.steps[update.current_step_index]
     embed = discord.Embed(
         title=f"🧭 Quest Updated | {update.quest.title}",
-        description="The next part of the road opens up in front of you.",
+        description="The next piece of the road opens in front of you.",
         color=get_explore_color("choice"),
     )
     embed.add_field(
@@ -274,32 +303,28 @@ def build_quest_update_embed(update: QuestProgressUpdate) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
-        name="⚙️ What This Means",
-        value="\n".join(f"• {line}" for line in current_step.system_explanation),
-        inline=False,
-    )
-    embed.add_field(
         name="🎯 Objective",
         value=current_step.objective,
         inline=False,
     )
     add_explore_divider(embed)
-    embed.set_footer(text="Only the currently active step gives quest credit.")
+    embed.set_footer(text='Only the active step counts. Keep your footing and move.')
     return embed
 
 
 class QuestCategorySelect(discord.ui.Select["QuestBoardView"]):
-    def __init__(self, selected_category: QuestCategory) -> None:
+    def __init__(self, selected_category: QuestCategory | None) -> None:
         options = [
             discord.SelectOption(
                 label=QUEST_CATEGORY_LABELS[category],
                 value=category,
+                emoji=CATEGORY_META[category]["emoji"],
                 default=category == selected_category,
             )
             for category in QUEST_CATEGORY_ORDER
         ]
         super().__init__(
-            placeholder="Choose a quest category",
+            placeholder="Choose a quest board",
             min_values=1,
             max_values=1,
             options=options,
@@ -308,58 +333,37 @@ class QuestCategorySelect(discord.ui.Select["QuestBoardView"]):
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.view is None:
             return
-        await self.view.set_category(interaction, self.values[0])
+        await self.view.open_category(interaction, self.values[0])
 
 
 class QuestSelect(discord.ui.Select["QuestBoardView"]):
-    def __init__(
-        self,
-        *,
-        board: PlayerQuestBoard,
-        selected_category: QuestCategory,
-        selected_quest_key: str | None,
-    ) -> None:
-        entries = board.quests_by_category.get(selected_category, [])
-        if entries:
-            options = [
-                discord.SelectOption(
-                    label=entry.quest.title,
-                    value=entry.quest.key,
-                    description=_describe_entry(entry),
-                    default=entry.quest.key == selected_quest_key,
-                    emoji=STATE_EMOJIS.get(entry.state, "📜"),
-                )
-                for entry in entries
-            ]
-            disabled = False
-        else:
-            options = [
-                discord.SelectOption(
-                    label="No quests available",
-                    value="empty",
-                    description="Nothing is open in this category yet.",
-                    emoji="📭",
-                )
-            ]
-            disabled = True
-
+    def __init__(self, *, entries: list[PlayerQuestEntry], selected_quest_key: str | None) -> None:
+        options = [
+            discord.SelectOption(
+                label=entry.quest.title,
+                value=entry.quest.key,
+                description=f"Req Lv {entry.quest.min_level} | {_state_text(entry)}"[:100],
+                default=entry.quest.key == selected_quest_key,
+                emoji=STATE_META.get(entry.state, {"emoji": "📜"})["emoji"],
+            )
+            for entry in entries
+        ]
         super().__init__(
             placeholder="Choose a quest to inspect",
             min_values=1,
             max_values=1,
             options=options,
-            disabled=disabled,
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if self.view is None or self.disabled:
+        if self.view is None:
             return
-        await self.view.show_quest_detail(interaction, self.values[0])
+        await self.view.open_detail(interaction, self.values[0])
 
 
 class AcceptQuestButton(discord.ui.Button["QuestBoardView"]):
-    def __init__(self, disabled: bool) -> None:
-        super().__init__(label="Accept Quest", style=discord.ButtonStyle.success, emoji="✅", disabled=disabled)
+    def __init__(self) -> None:
+        super().__init__(label="Accept Quest", style=discord.ButtonStyle.success, emoji="✅")
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.view is None:
@@ -367,16 +371,24 @@ class AcceptQuestButton(discord.ui.Button["QuestBoardView"]):
         await self.view.accept_selected_quest(interaction)
 
 
-class BackToHubButton(discord.ui.Button["QuestBoardView"]):
-    def __init__(self, *, deny_mode: bool) -> None:
-        label = "Deny Quest" if deny_mode else "Back to Board"
-        emoji = "❌" if deny_mode else "⬅️"
+class ResetQuestButton(discord.ui.Button["QuestBoardView"]):
+    def __init__(self) -> None:
+        super().__init__(label="Reset Quest", style=discord.ButtonStyle.danger, emoji="🔄")
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.view is None:
+            return
+        await self.view.reset_selected_quest(interaction)
+
+
+class BackButton(discord.ui.Button["QuestBoardView"]):
+    def __init__(self, *, label: str = "Back", emoji: str = "⬅️") -> None:
         super().__init__(label=label, style=discord.ButtonStyle.secondary, emoji=emoji)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.view is None:
             return
-        await self.view.go_to_hub(interaction)
+        await self.view.go_back(interaction)
 
 
 class QuestBoardView(discord.ui.View):
@@ -386,7 +398,7 @@ class QuestBoardView(discord.ui.View):
         bot: "BleachBot",
         owner_id: int,
         board: PlayerQuestBoard,
-        selected_category: QuestCategory = "main",
+        selected_category: QuestCategory | None = None,
         selected_quest_key: str | None = None,
         screen: QuestBoardScreen = "hub",
     ) -> None:
@@ -395,7 +407,7 @@ class QuestBoardView(discord.ui.View):
         self.owner_id = owner_id
         self.board = board
         self.selected_category = selected_category
-        self.selected_quest_key = selected_quest_key or _get_default_quest_key(board, selected_category)
+        self.selected_quest_key = selected_quest_key
         self.screen = screen
         self.message: discord.Message | None = None
         self._rebuild_components()
@@ -403,18 +415,31 @@ class QuestBoardView(discord.ui.View):
     def _rebuild_components(self) -> None:
         self.clear_items()
         self.add_item(QuestCategorySelect(self.selected_category))
-        self.add_item(
-            QuestSelect(
-                board=self.board,
-                selected_category=self.selected_category,
-                selected_quest_key=self.selected_quest_key,
-            )
-        )
-        if self.screen == "detail":
-            selected_entry = _get_selected_entry(self.board, self.selected_category, self.selected_quest_key)
-            is_available = selected_entry is not None and selected_entry.state == "available"
-            self.add_item(AcceptQuestButton(disabled=not is_available))
-            self.add_item(BackToHubButton(deny_mode=is_available))
+
+        if self.screen in {"category", "detail"} and self.selected_category is not None:
+            entries = self.board.quests_by_category.get(self.selected_category, [])
+            if entries:
+                if self.selected_quest_key is None:
+                    self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
+                self.add_item(
+                    QuestSelect(
+                        entries=entries,
+                        selected_quest_key=self.selected_quest_key,
+                    )
+                )
+
+        if self.screen == "category":
+            self.add_item(BackButton(label="Back to Boards"))
+        elif self.screen == "detail":
+            entry = _get_selected_entry(self.board, self.selected_category, self.selected_quest_key) if self.selected_category else None
+            if entry is not None and entry.state == "available":
+                self.add_item(AcceptQuestButton())
+                self.add_item(BackButton(label="Cancel", emoji="❌"))
+            elif entry is not None and entry.state == "active":
+                self.add_item(ResetQuestButton())
+                self.add_item(BackButton(label="Back to Quests"))
+            else:
+                self.add_item(BackButton(label="Back to Quests"))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
@@ -430,38 +455,35 @@ class QuestBoardView(discord.ui.View):
         if board is None:
             return
         self.board = board
-        available_keys = {
-            entry.quest.key
-            for entry in self.board.quests_by_category.get(self.selected_category, [])
-        }
-        if self.selected_quest_key not in available_keys:
-            self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
+        if self.selected_category is not None:
+            available_keys = {
+                entry.quest.key
+                for entry in self.board.quests_by_category.get(self.selected_category, [])
+            }
+            if self.selected_quest_key not in available_keys:
+                self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
         self._rebuild_components()
 
     def build_current_embed(self) -> discord.Embed:
         if self.screen == "hub":
-            return build_quest_hub_embed(
-                self.board,
-                selected_category=self.selected_category,
-                selected_quest_key=self.selected_quest_key,
-            )
-        selected_entry = _get_selected_entry(self.board, self.selected_category, self.selected_quest_key)
-        if selected_entry is None:
-            return build_quest_hub_embed(
-                self.board,
-                selected_category=self.selected_category,
-                selected_quest_key=self.selected_quest_key,
-            )
-        return build_quest_detail_embed(self.selected_category, selected_entry)
+            return build_quest_hub_embed(self.board)
+        if self.selected_category is None:
+            return build_quest_hub_embed(self.board)
+        if self.screen == "category":
+            return build_category_embed(self.board, self.selected_category)
+        entry = _get_selected_entry(self.board, self.selected_category, self.selected_quest_key)
+        if entry is None:
+            return build_category_embed(self.board, self.selected_category)
+        return build_quest_detail_embed(self.selected_category, entry)
 
-    async def set_category(self, interaction: discord.Interaction, category_value: str) -> None:
+    async def open_category(self, interaction: discord.Interaction, category_value: str) -> None:
         self.selected_category = category_value  # type: ignore[assignment]
         self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
-        self.screen = "hub"
+        self.screen = "category"
         await self.refresh_board()
         await interaction.response.edit_message(embed=self.build_current_embed(), view=self)
 
-    async def show_quest_detail(self, interaction: discord.Interaction, quest_key: str) -> None:
+    async def open_detail(self, interaction: discord.Interaction, quest_key: str) -> None:
         self.selected_quest_key = quest_key
         self.screen = "detail"
         await self.refresh_board()
@@ -478,37 +500,70 @@ class QuestBoardView(discord.ui.View):
         if status == "accepted":
             embed.add_field(
                 name="✅ Accepted",
-                value="This quest is now active. Its objectives will start counting immediately.",
+                value="The quest is now live. Its objectives will count from this point on.",
                 inline=False,
             )
         elif status == "active":
             embed.add_field(
                 name="🟢 Already Active",
-                value="You already accepted this quest. Keep moving on the current step.",
+                value="This quest is already in progress.",
                 inline=False,
             )
         elif status == "completed":
             embed.add_field(
                 name="✅ Already Completed",
-                value="You already cleared this quest.",
+                value="You already finished this quest.",
                 inline=False,
             )
         elif status == "ineligible":
             embed.add_field(
-                name="🔒 Not Eligible",
-                value="You do not meet the level requirement for this quest yet.",
+                name="🔒 Locked",
+                value="You do not meet the level requirement yet.",
                 inline=False,
             )
         else:
             embed.add_field(
-                name="⚠️ Quest Error",
+                name="⚠️ Error",
                 value="I couldn't accept that quest right now.",
                 inline=False,
             )
         await interaction.response.edit_message(embed=embed, view=self)
 
-    async def go_to_hub(self, interaction: discord.Interaction) -> None:
-        self.screen = "hub"
+    async def reset_selected_quest(self, interaction: discord.Interaction) -> None:
+        if self.selected_quest_key is None or self.selected_category is None:
+            await interaction.response.send_message("Pick a quest first.", ephemeral=True)
+            return
+        status = await reset_quest(self.bot.db_pool, interaction.user.id, self.selected_quest_key)
+        await self.refresh_board()
+        self.screen = "category"
+        embed = self.build_current_embed()
+        if status == "reset":
+            embed.add_field(
+                name="🔄 Quest Reset",
+                value="The unfinished quest was removed. You can accept it again fresh from this board.",
+                inline=False,
+            )
+        elif status == "completed":
+            embed.add_field(
+                name="✅ Already Completed",
+                value="Completed quests cannot be reset this way.",
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="⚠️ Reset Failed",
+                value="I couldn't reset that quest right now.",
+                inline=False,
+            )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def go_back(self, interaction: discord.Interaction) -> None:
+        if self.screen == "detail":
+            self.screen = "category"
+        else:
+            self.screen = "hub"
+            self.selected_category = None
+            self.selected_quest_key = None
         await self.refresh_board()
         await interaction.response.edit_message(embed=self.build_current_embed(), view=self)
 
