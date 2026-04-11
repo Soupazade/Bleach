@@ -371,10 +371,10 @@ RUKONGAI_STREETS_EVENTS = LocationEventPool(
             ),
         ),
         ExplorationEventTemplate(
-            title="Weak Hollow Stirring",
+            title="Raider Stirring",
             description=(
-                "A thin shriek tears across the lane and something hungry lunges out from the wreckage between homes. "
-                "Weak or not, a hollow in a poor block is still bad news for everyone nearby."
+                "A thin warning cry tears across the lane and a desperate raider lunges out from the wreckage between homes. "
+                "A starving cutthroat in a poor block is still bad news for everyone nearby."
             ),
         ),
         ExplorationEventTemplate(
@@ -403,7 +403,7 @@ RUKONGAI_STREETS_EVENTS = LocationEventPool(
         ExplorationEventTemplate(
             title="Need Versus Opportunity",
             description=(
-                "A stranger with hollow cheeks needs help now. Ten steps away, a risky opening cracks wide in the district. "
+                "A stranger with gaunt cheeks needs help now. Ten steps away, a risky opening cracks wide in the district. "
                 "You get just enough time to hate whichever choice you make."
             ),
         ),
@@ -523,7 +523,7 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                 title="A whisper worth acting on",
                 description=(
                     "A washline whisper turns sharp halfway through the run. "
-                    "A weak hollow is drifting near a nearby block, and a gang means to make coin off the fear before dawn."
+                    "A pack of raiders is circling a nearby block, and a gang means to make coin off the fear before dawn."
                 ),
                 options=(
                     _option(
@@ -572,7 +572,7 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
     ),
     ExplorationDecisionEventDefinition(
         key="rukongai_corner_hollow",
-        title="Weak Hollow by the Wall",
+        title="Raiders by the Wall",
         flow_type="single_choice",
         initial_step_id="step_one",
         steps=(
@@ -580,8 +580,8 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                 key="step_one",
                 title="A shriek in the plaster",
                 description=(
-                    "Near the end of the run, a cracked wall shudders with a thin, ugly shriek. "
-                    "A weak hollow is probing the edge of the block, and everybody hiding nearby knows what happens if nobody answers it."
+                    "Near the end of the run, a cracked wall rattles with boots and low voices. "
+                    "A small raider crew is probing the edge of the block, and everybody hiding nearby knows what happens if nobody answers it."
                 ),
                 options=(
                     _option(
@@ -589,9 +589,9 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         label="Drive it off",
                         style="danger",
                         outcome=_outcome(
-                            title="The Hollow Breaks First",
+                            title="The Raiders Break First",
                             description=(
-                                "You hit the weak hollow before fear can spread. It is quick, filthy work, but the lane breathes easier when it's over."
+                                "You hit the raiders before fear can spread. It is quick, filthy work, but the lane breathes easier when it's over."
                             ),
                             event_type="combat",
                             xp_profile="combat_win",
@@ -606,7 +606,7 @@ RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = (
                         outcome=_outcome(
                             title="Danger Redirected",
                             description=(
-                                "You pull the creature away from the homes and buy the block a few precious minutes of quiet. In these streets, that counts."
+                                "You draw the raiders away from the homes and buy the block a few precious minutes of quiet. In these streets, that counts."
                             ),
                             event_type="choice",
                             xp_profile="approach_base",
@@ -944,7 +944,7 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
     ),
     ExplorationDecisionEventDefinition(
         key="rukongai_special_hollow_nest",
-        title="Weak Hollow Nest",
+        title="Raider Hideout",
         flow_type="single_choice",
         initial_step_id="step_one",
         steps=(
@@ -952,18 +952,18 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                 key="step_one",
                 title="The reiatsu trail leads to a nest",
                 description=(
-                    "The strange pull resolves behind a line of wrecked walls, where weak hollows have been nesting in the dark. "
+                    "The strange pull resolves behind a line of wrecked walls, where raiders have been hiding out in the dark. "
                     "There is value here, but the whole place feels one bad move away from erupting."
                 ),
                 options=(
                     _option(
                         key="purge_nest",
-                        label="Purge the nest",
+                        label="Hit the hideout",
                         style="danger",
                         outcome=_outcome(
-                            title="Nest Broken Open",
+                            title="Hideout Broken Open",
                             description=(
-                                "You hit the nest head-on and tear it apart under a rain of bad reiatsu. The block will sleep easier for it, even if you do not."
+                                "You hit the hideout head-on and tear it apart under a rain of splintered boards and shouted threats. The block will sleep easier for it, even if you do not."
                             ),
                             event_type="combat",
                             xp_profile="special_combat_win",
@@ -973,12 +973,12 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
                     ),
                     _option(
                         key="lure_one_out",
-                        label="Lure one out",
+                        label="Lure a few out",
                         style="primary",
                         outcome=_outcome(
                             title="Controlled Risk, Real Gain",
                             description=(
-                                "You bait only part of the nest into the open and take what you can from the opening. It is slower, safer, and still far richer than a routine street run."
+                                "You bait only part of the hideout into the open and take what you can from the opening. It is slower, safer, and still far richer than a routine street run."
                             ),
                             event_type="reward",
                             xp_profile="special_base",
