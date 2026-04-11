@@ -4,6 +4,7 @@ from src.commands.fightlog import register_fightlog_command
 from src.commands.fighttest import register_fighttest_command
 from src.commands.inventory import register_inventory_command
 from src.commands.profile import register_profile_command
+from src.commands.quest import register_quest_command
 from src.commands.rest import register_rest_command
 from src.commands.shop import register_shop_command
 from src.commands.staff import register_staff_commands
@@ -16,6 +17,7 @@ from src.commands.use import register_use_command
 def register_commands(bot) -> None:
     register_start_command(bot)
     register_profile_command(bot)
+    register_quest_command(bot)
     register_inventory_command(bot)
     register_craft_command(bot)
     register_use_command(bot)

@@ -174,8 +174,6 @@ def _player_action_label(choice: CombatChoice) -> str:
         return "Bandage"
     if choice.action == "retreat":
         return "Retreat"
-    if choice.action == "afk_skip":
-        return "AFK Skip"
     if choice.ability_key is not None:
         return get_combat_ability(choice.ability_key).name
     return "Ability"
@@ -300,10 +298,6 @@ def resolve_combat_round(
         nonlocal player, enemies
         alive_enemies = _alive_enemies(enemies)
         if not alive_enemies:
-            return
-        if action_choice.action == "afk_skip":
-            player_summary_parts.append("You lose the turn to hesitation.")
-            detail_lines.append(f"Turn skipped: {action_choice.reason or 'no action selected'}")
             return
         if action_choice.action == "guard":
             player_summary_parts.append("You brace yourself behind a guarded stance.")
@@ -534,7 +528,7 @@ def resolve_combat_round(
     resolution_description = None
     xp_reward = 0
     if player.hp_current <= 0:
-        resolution_type = "afk_defeat" if player_choice.action == "afk_skip" else "defeat"
+        resolution_type = "defeat"
         resolution_title = f"{session.enemy_name} Leaves You Reeling"
         resolution_description = f"The fight turns against you, and **{session.enemy_name}** is still standing when your vision finally goes black."
         xp_reward = session.reward_xp_lose
@@ -563,5 +557,4 @@ def resolve_combat_round(
         resolution_title=resolution_title,
         resolution_description=resolution_description,
         xp_reward=xp_reward,
-        timed_out=player_choice.action == "afk_skip",
     )

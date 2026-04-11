@@ -49,6 +49,7 @@ PLAYER_PROFILE_COLUMNS = """
     defense,
     speed,
     reiatsu,
+    unspent_stat_points,
     trait,
     location,
     rukongai_rep,

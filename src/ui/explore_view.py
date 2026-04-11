@@ -15,6 +15,7 @@ from src.services.exploration_service import (
     schedule_exploration_task,
     start_exploration,
 )
+from src.services.quest_service import record_quest_action
 from src.services.player_service import build_resting_block_message, get_rest_status
 from src.services.reputation_service import (
     format_reputation_stamina_text,
@@ -22,6 +23,8 @@ from src.services.reputation_service import (
 )
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines
 from src.ui.explore_embed_style import get_explore_color
+from src.ui.quest_view import build_quest_update_embed
+from src.ui.stat_allocation_view import send_stat_allocation_prompt
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -367,6 +370,24 @@ class ExploreView(discord.ui.View):
                 self.bot.exploration_message_refs[interaction.user.id] = public_message.id
             else:
                 self.bot.exploration_message_refs[interaction.user.id] = original_message.id
+
+            quest_updates = await record_quest_action(
+                self.bot.db_pool,
+                interaction.user.id,
+                "explore_started",
+            )
+            for update in quest_updates:
+                await interaction.followup.send(
+                    embed=build_quest_update_embed(update),
+                    ephemeral=True,
+                )
+                if update.status == "completed" and update.stat_points_gained > 0:
+                    await send_stat_allocation_prompt(
+                        interaction,
+                        db_pool=self.bot.db_pool,
+                        owner_id=interaction.user.id,
+                        source_title="Quest Reward | Allocate Your Stat Points",
+                    )
             return
 
         if result.status == "active" and result.player is not None and result.exploration is not None:

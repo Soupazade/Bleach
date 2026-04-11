@@ -6,7 +6,10 @@ import discord
 from discord import app_commands
 
 from src.services.craft_service import craft_item, list_craft_recipes
+from src.services.quest_service import record_quest_action
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
+from src.ui.quest_view import build_quest_update_embed
+from src.ui.stat_allocation_view import send_stat_allocation_prompt
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -123,3 +126,25 @@ def register_craft_command(bot: "BleachBot") -> None:
             embed=_build_craft_success_embed(result=result),
             ephemeral=True,
         )
+
+        if result.output_item is None:
+            return
+
+        quest_updates = await record_quest_action(
+            bot.db_pool,
+            interaction.user.id,
+            "craft_item",
+            item_key=result.output_item.key,
+        )
+        for update in quest_updates:
+            await interaction.followup.send(
+                embed=build_quest_update_embed(update),
+                ephemeral=True,
+            )
+            if update.status == "completed" and update.stat_points_gained > 0:
+                await send_stat_allocation_prompt(
+                    interaction,
+                    db_pool=bot.db_pool,
+                    owner_id=interaction.user.id,
+                    source_title="Tutorial Reward | Allocate Your 5 Stat Points",
+                )

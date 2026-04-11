@@ -22,6 +22,11 @@ from src.services.location_service import format_location_room_reference
 from src.services.player_service import get_player_profile, get_rest_status
 from src.services.reputation_service import get_location_reputation_label, get_location_reputation_title
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
+from src.ui.stat_allocation_view import (
+    OpenStatAllocationButton,
+    StatAllocationView,
+    build_stat_allocation_embed,
+)
 
 PROFILE_PAGE_OPTIONS = (
     {
@@ -247,6 +252,7 @@ def build_profile_embed(
             value=build_explore_info_lines(
                 f"Total Stat Pool: **{total_stats_spent}/{total_stat_cap}**",
                 f"Remaining Points: **{remaining_capacity}**",
+                f"Unspent Stat Points: **{player.unspent_stat_points}**",
                 "Cap Rule: **Level x 10 total across all four stats**",
             ),
             inline=False,
@@ -524,8 +530,14 @@ class ProfileView(discord.ui.View):
         self.message: discord.Message | None = None
         self.page_key = initial_page
         self.page_select = ProfilePageSelect()
+        self._rebuild_controls()
+
+    def _rebuild_controls(self) -> None:
+        self.clear_items()
         self.page_select.set_active(self.page_key)
         self.add_item(self.page_select)
+        if self.player.unspent_stat_points > 0:
+            self.add_item(OpenStatAllocationButton())
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
@@ -545,7 +557,7 @@ class ProfileView(discord.ui.View):
         self.active_effects = await list_active_player_effects(self.db_pool, self.owner_id)
 
         self.page_key = page_key
-        self.page_select.set_active(page_key)
+        self._rebuild_controls()
         embed = build_profile_embed(
             self.player,
             self.discord_user,
@@ -553,6 +565,29 @@ class ProfileView(discord.ui.View):
             active_effects=self.active_effects,
         )
         await interaction.response.edit_message(embed=embed, view=self)
+
+    async def open_allocation(self, interaction: discord.Interaction) -> None:
+        refreshed_player = await get_player_profile(self.db_pool, self.owner_id)
+        if refreshed_player is None:
+            await interaction.response.send_message(
+                "I couldn't load your profile right now.",
+                ephemeral=True,
+            )
+            return
+
+        self.player = refreshed_player
+        allocation_view = StatAllocationView(
+            db_pool=self.db_pool,
+            owner_id=self.owner_id,
+            player=refreshed_player,
+            source_title="Allocate Unspent Stat Points",
+        )
+        await interaction.response.send_message(
+            embed=build_stat_allocation_embed(refreshed_player, source_title="Allocate Unspent Stat Points"),
+            view=allocation_view,
+            ephemeral=True,
+        )
+        allocation_view.message = await interaction.original_response()
 
     async def on_timeout(self) -> None:
         for child in self.children:

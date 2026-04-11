@@ -13,6 +13,7 @@ from src.data.locations import get_location_definition
 from src.data.travel import TravelRouteDefinition, get_travel_route
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
+from src.models.quest import QuestProgressUpdate
 from src.models.travel import ActiveTravel
 from src.services.combat_service import fetch_active_combat_record
 from src.services.exploration_service import (
@@ -23,6 +24,7 @@ from src.services.formulas import format_remaining_duration
 from src.services.effect_service import apply_travel_time_modifier, list_active_player_effects_for_connection
 from src.services.location_service import resolve_location_channel
 from src.services.player_service import get_or_sync_player_record, update_player_record
+from src.services.quest_service import record_quest_action_for_connection
 from src.services.reputation_service import (
     apply_rep_stamina_cost,
     get_location_reputation_title,
@@ -74,6 +76,7 @@ class TravelResolution:
     destination_name: str
     role_summary: str | None = None
     role_warning: str | None = None
+    quest_updates: tuple[QuestProgressUpdate, ...] = ()
 
 
 def _resolve_destination_channel(
@@ -311,6 +314,12 @@ async def resolve_travel(
             )
             updated_player = PlayerProfile.from_record(updated_player_record)
             await delete_active_travel(connection, user_id)
+            quest_updates = await record_quest_action_for_connection(
+                connection,
+                user_id,
+                "travel_completed",
+                location_key=travel.destination_location,
+            )
 
     destination_location = updated_player.location_data
     role_summary = None
@@ -338,6 +347,7 @@ async def resolve_travel(
         destination_name=destination_location.name,
         role_summary=role_summary,
         role_warning=role_warning,
+        quest_updates=quest_updates,
     )
 
 

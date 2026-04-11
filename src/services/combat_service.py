@@ -285,14 +285,6 @@ async def _advance_combat(
 
             round_outcome = resolve_combat_round(session, choice)
             updated_session = round_outcome.session
-            if round_outcome.timed_out:
-                updated_session = replace(updated_session, afk_skips=updated_session.afk_skips + 1)
-                if updated_session.afk_skips >= 3 and round_outcome.resolution_type is None:
-                    round_outcome.resolution_type = "afk_defeat"
-                    round_outcome.resolution_title = f"{updated_session.enemy_name} Leaves You Reeling"
-                    round_outcome.resolution_description = (
-                        f"You lose the thread of the fight completely, and **{updated_session.enemy_name}** drops you before you recover it."
-                    )
 
             await append_fight_log_event(
                 connection,
@@ -319,7 +311,7 @@ async def _advance_combat(
                     reputation_change=updated_session.reputation_change,
                 )
                 await finalize_fight_log(connection, fight_log_id=updated_session.fight_log_id, outcome=round_outcome.resolution_type)
-                return CombatAdvanceResult(status="resolved", combat=updated_session, resolution=resolution, blackout_applied=round_outcome.resolution_type in {"defeat", "afk_defeat"})
+                return CombatAdvanceResult(status="resolved", combat=updated_session, resolution=resolution, blackout_applied=round_outcome.resolution_type == "defeat")
 
             player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
             if player_sync is None:
@@ -332,7 +324,7 @@ async def _advance_combat(
                 "hp_current": project_profile_hp_from_combat(player, updated_session),
                 "mana_current": project_profile_mana_from_combat(player, updated_session),
             }
-            blackout_applied = round_outcome.resolution_type in {"defeat", "afk_defeat"}
+            blackout_applied = round_outcome.resolution_type == "defeat"
             if blackout_applied:
                 updates["hp_current"] = 1
                 updates["location"] = RUKONGAI_STREETS.key
@@ -520,7 +512,7 @@ async def _run_combat_task(bot: "BleachBot", user_id: int, fight_id: int) -> Non
                 content=f"<@{combat.user_id}>",
                 embed=discord.Embed(
                     title="Turn Warning",
-                    description="If you do not act within **1 minute**, your turn will be skipped.",
+                    description="If you do not act within **1 minute**, the fight will stay open until you return.",
                     color=discord.Color.orange(),
                 ),
             )
@@ -535,14 +527,7 @@ async def _run_combat_task(bot: "BleachBot", user_id: int, fight_id: int) -> Non
                 break
             if combat.turn_deadline_at > datetime.now(timezone.utc):
                 continue
-            if combat.message_id is None:
-                break
-            await resolve_and_post_combat_action(
-                bot,
-                message_id=combat.message_id,
-                user_id=user_id,
-                action="afk_skip",
-            )
+            break
     except asyncio.CancelledError:
         raise
     except Exception:

@@ -168,6 +168,22 @@ def build_travel_arrived_embed(resolution: TravelResolution) -> discord.Embed:
         ),
         inline=True,
     )
+    if resolution.quest_updates:
+        quest_update = resolution.quest_updates[0]
+        if quest_update.status == "completed":
+            quest_text = build_explore_info_lines(
+                f"Quest: {quest_update.quest.title}",
+                "Status: Completed",
+            )
+        else:
+            next_step = quest_update.quest.steps[quest_update.current_step_index]
+            quest_text = build_explore_info_lines(
+                f"Quest: {quest_update.quest.title}",
+                f"Step: {quest_update.current_step_index + 1}/{len(quest_update.quest.steps)}",
+                f"Next: {next_step.title}",
+                f"Task: {next_step.objective}",
+            )
+        embed.add_field(name="Quest Updated", value=quest_text, inline=False)
     if resolution.role_summary is not None:
         embed.add_field(name="Role Update", value=resolution.role_summary, inline=False)
     if resolution.role_warning is not None:

@@ -20,6 +20,7 @@ from src.models.training import ActiveTraining
 from src.services.combat_service import get_active_exploration_combat
 from src.services.location_service import format_location_room_reference
 from src.services.player_service import build_resting_block_message, get_rest_status
+from src.services.quest_service import record_quest_action
 from src.services.reputation_service import (
     format_reputation_stamina_text,
     get_location_reputation_title,
@@ -40,6 +41,8 @@ from src.services.training_service import (
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 from src.ui.exploration_combat_view import build_active_combat_embed
 from src.ui.explore_view import build_explore_resolution_posted_embed
+from src.ui.quest_view import build_quest_update_embed
+from src.ui.stat_allocation_view import send_stat_allocation_prompt
 from src.ui.travel_view import build_travel_active_embed, build_travel_resolution_posted_embed
 
 if TYPE_CHECKING:
@@ -560,6 +563,23 @@ class TrainingSetupView(discord.ui.View):
                 ),
                 view=None,
             )
+            quest_updates = await record_quest_action(
+                self.bot.db_pool,
+                interaction.user.id,
+                "training_started",
+            )
+            for update in quest_updates:
+                await interaction.followup.send(
+                    embed=build_quest_update_embed(update),
+                    ephemeral=True,
+                )
+                if update.status == "completed" and update.stat_points_gained > 0:
+                    await send_stat_allocation_prompt(
+                        interaction,
+                        db_pool=self.bot.db_pool,
+                        owner_id=interaction.user.id,
+                        source_title="Tutorial Reward | Allocate Your 5 Stat Points",
+                    )
             return
 
         if result.status == "active_training" and result.player is not None and result.training is not None:

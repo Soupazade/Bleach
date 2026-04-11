@@ -28,6 +28,7 @@ class PlayerProfile:
     defense: int
     speed: int
     reiatsu: int
+    unspent_stat_points: int
     spiritual_pressure: int
     trait: str
     location: str
@@ -67,6 +68,7 @@ class PlayerProfile:
             defense=defense,
             speed=speed,
             reiatsu=reiatsu,
+            unspent_stat_points=int(record["unspent_stat_points"]),
             spiritual_pressure=calculate_spiritual_pressure(
                 power=power,
                 defense=defense,

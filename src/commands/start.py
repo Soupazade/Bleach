@@ -9,6 +9,7 @@ from src.data.game_constants import SOUL_ROLE_ID
 from src.models.player import PlayerProfile
 from src.services.location_service import format_location_room_reference, resolve_location_role
 from src.services.player_service import create_player_profile
+from src.services.quest_service import ensure_auto_start_quests
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -65,6 +66,14 @@ def build_start_embed(
         value=f"**{location.name}**\nRoom: {format_location_room_reference(location)}",
         inline=False,
     )
+    embed.add_field(
+        name="First Tutorial",
+        value=(
+            "Your first main quest is **A Soul's First Day**.\n"
+            "Open `/quest`, choose **Main Quests**, and follow Kaito's lead through the basics."
+        ),
+        inline=False,
+    )
 
     if role_summary is not None:
         embed.add_field(name="Role Setup", value=role_summary, inline=False)
@@ -72,7 +81,7 @@ def build_start_embed(
     if role_warning is not None:
         embed.add_field(name="Role Warning", value=role_warning, inline=False)
 
-    embed.set_footer(text="Use /profile to open your multi-page Soul Record.")
+    embed.set_footer(text="Use /profile for your record and /quest for your tutorial path.")
     return embed
 
 
@@ -156,6 +165,8 @@ def register_start_command(bot: "BleachBot") -> None:
                 ephemeral=True,
             )
             return
+
+        await ensure_auto_start_quests(bot.db_pool, member.id)
 
         role_summary = None
         role_warning = None

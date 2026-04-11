@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS player_profiles (
     defense INTEGER NOT NULL DEFAULT 0,
     speed INTEGER NOT NULL DEFAULT 0,
     reiatsu INTEGER NOT NULL DEFAULT 0,
+    unspent_stat_points INTEGER NOT NULL DEFAULT 0,
     trait TEXT NOT NULL DEFAULT 'resilient',
     location TEXT NOT NULL DEFAULT 'rukongai_streets',
     rukongai_rep INTEGER NOT NULL DEFAULT 0,
@@ -231,6 +232,20 @@ CREATE TABLE IF NOT EXISTS player_inventory_items (
 );
 """
 
+CREATE_PLAYER_QUESTS_TABLE = """
+CREATE TABLE IF NOT EXISTS player_quests (
+    user_id BIGINT NOT NULL REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    quest_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    current_step_index INTEGER NOT NULL DEFAULT 0,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, quest_key)
+);
+"""
+
 PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS user_id BIGINT",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS race TEXT NOT NULL DEFAULT 'Soul'",
@@ -248,6 +263,7 @@ PLAYER_PROFILE_COLUMN_DEFAULTS = (
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS defense INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS reiatsu INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS unspent_stat_points INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS trait TEXT NOT NULL DEFAULT 'resilient'",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT 'rukongai_streets'",
     "ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rukongai_rep INTEGER NOT NULL DEFAULT 0",
@@ -352,6 +368,16 @@ ON player_inventory_items (user_id);
 CREATE_PLAYER_INVENTORY_ITEM_KEY_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_player_inventory_item_key
 ON player_inventory_items (user_id, item_key);
+"""
+
+CREATE_PLAYER_QUESTS_USER_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_quests_user_id
+ON player_quests (user_id);
+"""
+
+CREATE_PLAYER_QUESTS_STATUS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_player_quests_status
+ON player_quests (user_id, status);
 """
 
 
@@ -489,3 +515,6 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_PLAYER_INVENTORY_ITEMS_TABLE)
         await connection.execute(CREATE_PLAYER_INVENTORY_USER_INDEX)
         await connection.execute(CREATE_PLAYER_INVENTORY_ITEM_KEY_INDEX)
+        await connection.execute(CREATE_PLAYER_QUESTS_TABLE)
+        await connection.execute(CREATE_PLAYER_QUESTS_USER_INDEX)
+        await connection.execute(CREATE_PLAYER_QUESTS_STATUS_INDEX)

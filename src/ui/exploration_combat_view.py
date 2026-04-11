@@ -44,6 +44,10 @@ def _quote_for_combat(combat: CombatSession) -> str:
     return BLEACH_QUOTES[(combat.round_number - 1) % len(BLEACH_QUOTES)]
 
 
+def _footer_text(combat: CombatSession) -> str:
+    return f"{_quote_for_combat(combat)} | Round {combat.round_number} | Fight Log ID {combat.fight_log_id}"
+
+
 def _format_player_panel(combat: CombatSession) -> str:
     return build_explore_info_lines(
         f"Race: **{combat.player.race}**",
@@ -83,17 +87,8 @@ def build_exploration_combat_embed(
         value=combat.last_round_summary or "**Your Turn**\n- Waiting on your move.\n\n**Enemy Turn**\n- The enemy is reading you.",
         inline=False,
     )
-    embed.add_field(
-        name="🕯️ Battle State",
-        value=build_explore_info_lines(
-            f"Fight Log ID: **{combat.fight_log_id}**",
-            f"Round: **{combat.round_number}**",
-            f"AFK Skips: **{combat.afk_skips}/3**",
-        ),
-        inline=False,
-    )
     add_explore_divider(embed)
-    embed.set_footer(text=_quote_for_combat(combat))
+    embed.set_footer(text=_footer_text(combat))
     return embed
 
 
@@ -116,13 +111,11 @@ def build_active_combat_embed(
             f"Level: **{combat.player.level}**",
             f"HP: **{combat.player.hp_current}/{combat.player.hp_max}**",
             f"Mana: **{combat.player.mana_current}/{combat.player.mana_max}**",
-            f"Round: **{combat.round_number}**",
-            f"Fight Log ID: **{combat.fight_log_id}**",
         ),
         inline=False,
     )
     add_explore_divider(embed)
-    embed.set_footer(text=_quote_for_combat(combat))
+    embed.set_footer(text=_footer_text(combat))
     return embed
 
 
@@ -138,8 +131,6 @@ def build_fight_result_embed(
     final_title = "🏆 Victory"
     if outcome == "retreated":
         final_title = "🏃 Retreat"
-    elif outcome == "afk_defeat":
-        final_title = "☠️ Defeat | AFK"
     elif outcome == "defeat":
         final_title = "☠️ Defeat"
 
@@ -152,21 +143,20 @@ def build_fight_result_embed(
         name="Aftermath",
         value=build_explore_info_lines(
             f"Fight: **{title}**",
-            f"Fight Log ID: **{combat.fight_log_id}**",
             f"HP After: **{player.hp_current}/{player.hp_max}**",
             f"Mana After: **{player.mana_current}/{player.mana_max}**",
             f"Location: **{player.location_data.name}**",
         ),
         inline=False,
     )
-    if outcome in {"defeat", "afk_defeat"}:
+    if outcome == "defeat":
         embed.add_field(
             name="Blackout",
             value="You black out, wake in **Rukongai Streets**, and carry **Wounded** for **30 minutes**.",
             inline=False,
         )
     add_explore_divider(embed)
-    embed.set_footer(text=_quote_for_combat(combat))
+    embed.set_footer(text=_footer_text(combat))
     return embed
 
 

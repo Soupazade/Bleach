@@ -7,9 +7,9 @@ from typing import Any, Literal
 from src.models.exploration import ActiveExploration
 
 
-CombatAction = Literal["strike", "guard", "retreat", "ability", "bandage", "afk_skip"]
+CombatAction = Literal["strike", "guard", "retreat", "ability", "bandage"]
 CombatSourceKind = Literal["exploration", "fighttest"]
-CombatResolutionType = Literal["victory", "defeat", "retreated", "afk_defeat"]
+CombatResolutionType = Literal["victory", "defeat", "retreated"]
 AbilityTargeting = Literal["single", "all"]
 
 
@@ -252,7 +252,6 @@ class CombatRoundOutcome:
     resolution_title: str | None = None
     resolution_description: str | None = None
     xp_reward: int = 0
-    timed_out: bool = False
 
 
 @dataclass(slots=True)
