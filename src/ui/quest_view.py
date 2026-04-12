@@ -411,7 +411,7 @@ class QuestSelect(discord.ui.Select["QuestBoardView"]):
             for entry in entries
         ]
         super().__init__(
-            placeholder="Choose a quest to inspect",
+            placeholder="Choose a quest to inspect" if selected_quest_key is None else "Switch quest briefing",
             min_values=1,
             max_values=1,
             options=options,
@@ -481,7 +481,7 @@ class QuestBoardView(discord.ui.View):
         if self.screen in {"category", "detail"} and self.selected_category is not None:
             entries = self.board.quests_by_category.get(self.selected_category, [])
             if entries:
-                if self.selected_quest_key is None:
+                if self.screen == "detail" and self.selected_quest_key is None:
                     self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
                 self.add_item(
                     QuestSelect(
@@ -522,7 +522,7 @@ class QuestBoardView(discord.ui.View):
                 entry.quest.key
                 for entry in self.board.quests_by_category.get(self.selected_category, [])
             }
-            if self.selected_quest_key not in available_keys:
+            if self.selected_quest_key is not None and self.selected_quest_key not in available_keys:
                 self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
         self._rebuild_components()
 
@@ -540,7 +540,7 @@ class QuestBoardView(discord.ui.View):
 
     async def open_category(self, interaction: discord.Interaction, category_value: str) -> None:
         self.selected_category = category_value  # type: ignore[assignment]
-        self.selected_quest_key = _get_default_quest_key(self.board, self.selected_category)
+        self.selected_quest_key = None
         self.screen = "category"
         await self.refresh_board()
         await interaction.response.edit_message(embed=self.build_current_embed(), view=self)
