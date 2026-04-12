@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from src.main import BleachBot
 
 
-QuestBoardScreen = Literal["hub", "category", "detail"]
+QuestBoardScreen = Literal["hub", "category", "detail", "info"]
 
 CATEGORY_META: dict[QuestCategory, dict[str, str]] = {
     "main": {
@@ -51,12 +51,6 @@ STATE_META = {
     "active": {"emoji": "🟢", "label": "In Progress"},
     "completed": {"emoji": "✅", "label": "Completed"},
 }
-
-BLEACH_QUOTES = (
-    '"If you are going to survive, move like your soul means it."',
-    '"The streets remember weakness faster than mercy."',
-    '"Every step in Rukongai costs something."',
-)
 
 DIFFICULTY_META = {
     "tutorial": "🟢 Tutorial",
@@ -147,6 +141,15 @@ def _get_selected_entry(
     return next((entry for entry in entries if entry.quest.key == quest_key), entries[0])
 
 
+def _get_active_entries(board: PlayerQuestBoard) -> list[tuple[QuestCategory, PlayerQuestEntry]]:
+    active_entries: list[tuple[QuestCategory, PlayerQuestEntry]] = []
+    for category in QUEST_CATEGORY_ORDER:
+        for entry in board.quests_by_category.get(category, []):
+            if entry.state == "active":
+                active_entries.append((category, entry))
+    return active_entries
+
+
 def build_quest_hub_embed(board: PlayerQuestBoard) -> discord.Embed:
     embed = discord.Embed(
         title="🗂️ Soul Assignment Ledger",
@@ -158,18 +161,11 @@ def build_quest_hub_embed(board: PlayerQuestBoard) -> discord.Embed:
     )
     embed.add_field(
         name="🧭 Quest Ledgers",
-        value="\n".join(
+        value="-------\n"
+        + "\n".join(
             f"{CATEGORY_META[category]['emoji']} **{CATEGORY_META[category]['title']}**\n"
             f"{CATEGORY_META[category]['tagline']}"
             for category in QUEST_CATEGORY_ORDER
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="📜 Soul Society Saying",
-        value=build_explore_info_lines(
-            f"Current Level: **{board.player.level}**",
-            BLEACH_QUOTES[0],
         ),
         inline=False,
     )
@@ -212,6 +208,54 @@ def build_category_embed(board: PlayerQuestBoard, category: QuestCategory) -> di
     return embed
 
 
+def build_quest_info_embed(board: PlayerQuestBoard) -> discord.Embed:
+    active_entries = _get_active_entries(board)
+    embed = discord.Embed(
+        title="📖 Current Quest Log",
+        description=(
+            "The work already on your shoulders is what matters most in Rukongai.\n"
+            "This ledger tracks the missions you are actively carrying."
+        ),
+        color=get_explore_color("explore"),
+    )
+
+    if not active_entries:
+        embed.add_field(
+            name="📭 No Active Quests",
+            value=(
+                "You do not have any quests in progress right now.\n"
+                "Visit the quest boards and accept a posting when you are ready."
+            ),
+            inline=False,
+        )
+    else:
+        for category, entry in active_entries:
+            briefing_step = _get_briefing_step(entry)
+            current_step = briefing_step[0] if briefing_step is not None else None
+            current_step_index = briefing_step[1] if briefing_step is not None else 0
+            embed.add_field(
+                name=f"{CATEGORY_META[category]['emoji']} {entry.quest.title}",
+                value=build_explore_info_lines(
+                    f"Status: **{STATE_META['active']['label']}**",
+                    f"Progress: **Step {current_step_index + 1}/{len(entry.quest.steps)}**",
+                    (
+                        f"Current Step: **{current_step.title}**"
+                        if current_step is not None
+                        else "Current Step: **Unknown**"
+                    ),
+                    (
+                        f"Objective: {current_step.objective}"
+                        if current_step is not None
+                        else ""
+                    ),
+                ),
+                inline=False,
+            )
+    add_explore_divider(embed)
+    embed.set_footer(text="Only active quests appear here. Finished work leaves the ledger.")
+    return embed
+
+
 def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -> discord.Embed:
     meta = CATEGORY_META[category]
     state = STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})
@@ -228,8 +272,6 @@ def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -
             f"Status: {state['emoji']} **{state['label']}**",
             f"Requirement: **Level {entry.quest.min_level}+**",
             f"Difficulty: **{_format_difficulty_text(entry.quest.difficulty)}**",
-            f"Guide: **{entry.quest.guide_name}**",
-            f"Total Steps: **{len(entry.quest.steps)}**",
         ),
         inline=False,
     )
@@ -453,6 +495,16 @@ class BackButton(discord.ui.Button["QuestBoardView"]):
         await self.view.go_back(interaction)
 
 
+class QuestInfoButton(discord.ui.Button["QuestBoardView"]):
+    def __init__(self) -> None:
+        super().__init__(label="Quest Info", style=discord.ButtonStyle.primary, emoji="📖")
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.view is None:
+            return
+        await self.view.open_info(interaction)
+
+
 class QuestBoardView(discord.ui.View):
     def __init__(
         self,
@@ -471,12 +523,14 @@ class QuestBoardView(discord.ui.View):
         self.selected_category = selected_category
         self.selected_quest_key = selected_quest_key
         self.screen = screen
+        self.previous_screen: QuestBoardScreen = "hub"
         self.message: discord.Message | None = None
         self._rebuild_components()
 
     def _rebuild_components(self) -> None:
         self.clear_items()
-        self.add_item(QuestCategorySelect(self.selected_category))
+        if self.screen != "info":
+            self.add_item(QuestCategorySelect(self.selected_category))
 
         if self.screen in {"category", "detail"} and self.selected_category is not None:
             entries = self.board.quests_by_category.get(self.selected_category, [])
@@ -490,10 +544,14 @@ class QuestBoardView(discord.ui.View):
                     )
                 )
 
-        if self.screen == "category":
+        if self.screen == "hub":
+            self.add_item(QuestInfoButton())
+        elif self.screen == "category":
+            self.add_item(QuestInfoButton())
             self.add_item(BackButton(label="Back to Boards"))
         elif self.screen == "detail":
             entry = _get_selected_entry(self.board, self.selected_category, self.selected_quest_key) if self.selected_category else None
+            self.add_item(QuestInfoButton())
             if entry is not None and entry.state == "available":
                 self.add_item(AcceptQuestButton())
                 self.add_item(BackButton(label="Cancel", emoji="❌"))
@@ -502,6 +560,8 @@ class QuestBoardView(discord.ui.View):
                 self.add_item(BackButton(label="Back to Quests"))
             else:
                 self.add_item(BackButton(label="Back to Quests"))
+        elif self.screen == "info":
+            self.add_item(BackButton(label="Back"))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
@@ -529,6 +589,8 @@ class QuestBoardView(discord.ui.View):
     def build_current_embed(self) -> discord.Embed:
         if self.screen == "hub":
             return build_quest_hub_embed(self.board)
+        if self.screen == "info":
+            return build_quest_info_embed(self.board)
         if self.selected_category is None:
             return build_quest_hub_embed(self.board)
         if self.screen == "category":
@@ -548,6 +610,13 @@ class QuestBoardView(discord.ui.View):
     async def open_detail(self, interaction: discord.Interaction, quest_key: str) -> None:
         self.selected_quest_key = quest_key
         self.screen = "detail"
+        await self.refresh_board()
+        await interaction.response.edit_message(embed=self.build_current_embed(), view=self)
+
+    async def open_info(self, interaction: discord.Interaction) -> None:
+        if self.screen != "info":
+            self.previous_screen = self.screen
+        self.screen = "info"
         await self.refresh_board()
         await interaction.response.edit_message(embed=self.build_current_embed(), view=self)
 
@@ -620,7 +689,12 @@ class QuestBoardView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def go_back(self, interaction: discord.Interaction) -> None:
-        if self.screen == "detail":
+        if self.screen == "info":
+            self.screen = self.previous_screen
+            if self.screen == "hub":
+                self.selected_category = None
+                self.selected_quest_key = None
+        elif self.screen == "detail":
             self.screen = "category"
         else:
             self.screen = "hub"
