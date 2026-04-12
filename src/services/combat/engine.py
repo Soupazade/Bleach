@@ -14,6 +14,11 @@ from src.services.combat.types import (
     CombatSession,
 )
 
+GUARD_BASE_REDUCTION_PCT = 50
+GUARD_CLEAN_BREATHING_BONUS_PCT = 10.0
+GUARD_STAGGERED_BREATHING_BONUS_PCT = 5.0
+GUARD_COUNTER_CHANCE = 0.20
+
 
 def _clamp(value: float, *, low: float, high: float) -> float:
     return max(low, min(high, value))
@@ -23,8 +28,7 @@ def _decrement_cooldowns(cooldowns: dict[str, int]) -> dict[str, int]:
     return {key: value - 1 for key, value in cooldowns.items() if value - 1 > 0}
 
 
-def _regen_mana(entity: CombatEntity, *, guarded_breathing: bool = False) -> tuple[CombatEntity, int]:
-    bonus_pct = 5.0 if guarded_breathing else 0.0
+def _regen_mana(entity: CombatEntity, *, bonus_pct: float = 0.0) -> tuple[CombatEntity, int]:
     regen_pct = entity.mana_regen_pct + bonus_pct
     regen_amount = max(0, math.ceil(entity.mana_max * (regen_pct / 100)))
     restored = min(entity.mana_max - entity.mana_current, regen_amount)
@@ -149,7 +153,7 @@ def _enemy_choice(enemy: CombatEntity) -> CombatChoice:
 
 
 def _apply_guard_reduction(damage: int) -> tuple[int, int]:
-    reduction_pct = random.randint(40, 60)
+    reduction_pct = GUARD_BASE_REDUCTION_PCT
     reduced_damage = max(1, int(round(damage * (1 - reduction_pct / 100))))
     return reduced_damage, reduction_pct
 
@@ -300,7 +304,7 @@ def resolve_combat_round(
         if not alive_enemies:
             return
         if action_choice.action == "guard":
-            player_summary_parts.append("You brace yourself behind a guarded stance.")
+            player_summary_parts.append("You settle into a tight guard, waiting for the opening behind the impact.")
             detail_lines.append("Player chooses Guard.")
             return
         if action_choice.action == "bandage":
@@ -405,7 +409,7 @@ def resolve_combat_round(
                         text = f"**{enemy.name}** crashes into your guard for **{reduced_damage}** damage with {ability.name}."
                         details["guard_reduction_pct"] = reduction_pct
                         details["guarded_damage"] = reduced_damage
-                        if random.random() < 0.10:
+                        if random.random() < GUARD_COUNTER_CHANCE:
                             updated_enemy, counter_text, counter_details, _ = _perform_strike(
                                 attacker=player,
                                 defender=enemy,
@@ -450,7 +454,7 @@ def resolve_combat_round(
                 text = f"**{enemy.name}** breaks on your guard for **{reduced_damage}** damage."
                 details["guard_reduction_pct"] = reduction_pct
                 details["guarded_damage"] = reduced_damage
-                if random.random() < 0.10:
+                if random.random() < GUARD_COUNTER_CHANCE:
                     updated_enemy, counter_text, counter_details, _ = _perform_strike(
                         attacker=player,
                         defender=enemy,
@@ -479,9 +483,19 @@ def resolve_combat_round(
             detail_lines.append("Bonus turn consumed: player follow-up")
             _resolve_player_action_once(player_choice)
         if not _alive_enemies(enemies):
-            player, mana_restored = _regen_mana(player, guarded_breathing=player_guarding and not player_was_hit)
-            if player_guarding and not player_was_hit and mana_restored > 0:
-                player_summary_parts.append("Your guard holds clean, and a quiet breath pulls a little reiatsu back into place.")
+            guard_regen_bonus = 0.0
+            if player_guarding:
+                guard_regen_bonus = (
+                    GUARD_CLEAN_BREATHING_BONUS_PCT
+                    if not player_was_hit
+                    else GUARD_STAGGERED_BREATHING_BONUS_PCT
+                )
+            player, mana_restored = _regen_mana(player, bonus_pct=guard_regen_bonus)
+            if player_guarding and mana_restored > 0:
+                if player_was_hit:
+                    player_summary_parts.append("Even under pressure, your guard steadies your breathing and draws a little reiatsu back.")
+                else:
+                    player_summary_parts.append("Your guard holds clean, and a quiet breath pulls reiatsu back into place.")
             detail_lines.append(f"End-turn mana regen: +{mana_restored}")
             updated_session = replace(
                 session,
@@ -514,9 +528,19 @@ def resolve_combat_round(
 
     player.cooldowns = _decrement_cooldowns(player.cooldowns)
     enemies = [replace(enemy, cooldowns=_decrement_cooldowns(enemy.cooldowns)) for enemy in enemies]
-    player, mana_restored = _regen_mana(player, guarded_breathing=player_guarding and not player_was_hit)
-    if player_guarding and not player_was_hit and mana_restored > 0:
-        player_summary_parts.append("Your guard buys a small break, and your reiatsu steadies on the inhale.")
+    guard_regen_bonus = 0.0
+    if player_guarding:
+        guard_regen_bonus = (
+            GUARD_CLEAN_BREATHING_BONUS_PCT
+            if not player_was_hit
+            else GUARD_STAGGERED_BREATHING_BONUS_PCT
+        )
+    player, mana_restored = _regen_mana(player, bonus_pct=guard_regen_bonus)
+    if player_guarding and mana_restored > 0:
+        if player_was_hit:
+            player_summary_parts.append("Your guard still buys you a breath, and some reiatsu settles back into place.")
+        else:
+            player_summary_parts.append("Your guard buys a clean break, and your reiatsu steadies on the inhale.")
     detail_lines.append(f"Cooldowns after turn: {player.cooldowns}")
     for enemy in enemies:
         if enemy.cooldowns:
