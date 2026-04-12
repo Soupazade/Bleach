@@ -20,6 +20,13 @@ ExploreXpProfile = Literal[
     "special_combat_lose",
 ]
 ButtonStyleName = Literal["primary", "secondary", "success", "danger"]
+ExploreFocusKey = Literal[
+    "explore_streets",
+    "scavenge_supplies",
+    "help_district",
+    "chase_rumors",
+    "look_for_fight",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +42,11 @@ class ExploreApproachDefinition:
     event_biases: dict[ExploreEventType, int]
     menu_description: str
     intro_text: str
+    focus_key: str = "legacy"
+    focus_emoji: str = "🧭"
+    focus_description: str = ""
+    duration_key: str = "legacy"
+    duration_emoji: str = "⏱"
 
     @property
     def id(self) -> str:
@@ -56,6 +68,28 @@ class ExploreApproachDefinition:
 @dataclass(frozen=True, slots=True)
 class ExplorationEventTemplate:
     title: str
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExploreFocusDefinition:
+    key: ExploreFocusKey
+    label: str
+    emoji: str
+    description: str
+    intro_text: str
+    event_biases: dict[ExploreEventType, int]
+
+
+@dataclass(frozen=True, slots=True)
+class ExploreDurationDefinition:
+    key: str
+    label: str
+    emoji: str
+    duration_minutes: int
+    stamina_cost: int
+    risk_tier: str
+    reward_tier: str
     description: str
 
 
@@ -330,6 +364,157 @@ RUKONGAI_STREETS_APPROACHES = (
         intro_text="You push beyond daily survival, looking for a thread that might actually pull you toward something better.",
     ),
 )
+
+LEGACY_RUKONGAI_STREETS_APPROACHES = RUKONGAI_STREETS_APPROACHES
+
+RUKONGAI_EXPLORE_FOCUSES = (
+    ExploreFocusDefinition(
+        key="explore_streets",
+        label="Explore the Streets",
+        emoji="🧭",
+        description="A broad run through Rukongai where anything from scraps to danger to quiet human moments can find you.",
+        intro_text=(
+            "You move through the district without forcing one narrow goal, reading the rhythm of the streets and taking whatever opening the night offers."
+        ),
+        event_biases=_biases(reward=28, combat=18, choice=30, flavor=24),
+    ),
+    ExploreFocusDefinition(
+        key="scavenge_supplies",
+        label="Scavenge for Supplies",
+        emoji="🧺",
+        description="Best for cloth scraps, food scraps, and the rough little materials that keep you alive long enough to craft.",
+        intro_text=(
+            "You keep your eyes on broken stalls, discarded bundles, cookfires gone cold, and every corner where hunger might have left something behind."
+        ),
+        event_biases=_biases(reward=42, combat=10, choice=14, flavor=34),
+    ),
+    ExploreFocusDefinition(
+        key="help_district",
+        label="Help the District",
+        emoji="🤝",
+        description="Best for reputation, hard moral choices, and the kind of street memory that changes how people look at you.",
+        intro_text=(
+            "You spend the run watching for people about to be cornered, cheated, or crushed under the weight of another bad night in Rukongai."
+        ),
+        event_biases=_biases(reward=30, combat=16, choice=36, flavor=18),
+    ),
+    ExploreFocusDefinition(
+        key="chase_rumors",
+        label="Chase Rumors",
+        emoji="👂",
+        description="Best for leads, whispers, hidden routes, NPC trouble, and the kind of clue that can turn into a bigger score later.",
+        intro_text=(
+            "You trail whispers from washlines, cookfires, doorway mutters, and half-swallowed warnings, trusting that one real lead is buried somewhere in the noise."
+        ),
+        event_biases=_biases(reward=18, combat=14, choice=48, flavor=20),
+    ),
+    ExploreFocusDefinition(
+        key="look_for_fight",
+        label="Look for a Fight",
+        emoji="⚔️",
+        description="Best for combat, danger, and higher XP if you can walk away from the clash still standing.",
+        intro_text=(
+            "You stop pretending tonight will stay quiet and start hunting the places where pressure, anger, and fear are about to break into violence."
+        ),
+        event_biases=_biases(reward=10, combat=56, choice=20, flavor=14),
+    ),
+)
+
+RUKONGAI_EXPLORE_DURATIONS = (
+    ExploreDurationDefinition(
+        key="quick",
+        label="2m Quick",
+        emoji="⏱️",
+        duration_minutes=2,
+        stamina_cost=10,
+        risk_tier="low",
+        reward_tier="low",
+        description="Safer and lighter. Good for cautious runs and fast scavenging.",
+    ),
+    ExploreDurationDefinition(
+        key="steady",
+        label="3m Balanced",
+        emoji="🕰️",
+        duration_minutes=3,
+        stamina_cost=14,
+        risk_tier="medium",
+        reward_tier="medium",
+        description="A balanced commitment with room for trouble or payoff.",
+    ),
+    ExploreDurationDefinition(
+        key="deep",
+        label="5m Risky",
+        emoji="🌒",
+        duration_minutes=5,
+        stamina_cost=20,
+        risk_tier="high",
+        reward_tier="high",
+        description="Long enough for better chances, uglier turns, and stronger rewards.",
+    ),
+    ExploreDurationDefinition(
+        key="grind",
+        label="10m Jackpot",
+        emoji="🔥",
+        duration_minutes=10,
+        stamina_cost=30,
+        risk_tier="high",
+        reward_tier="high",
+        description="A hard commitment with the biggest danger and the best shot at major outcomes.",
+    ),
+)
+
+
+def _merge_biases(
+    base: dict[ExploreEventType, int],
+    adjustment: dict[ExploreEventType, int],
+) -> dict[ExploreEventType, int]:
+    merged: dict[ExploreEventType, int] = {}
+    for event_type in ("reward", "combat", "choice", "flavor"):
+        merged[event_type] = max(1, base.get(event_type, 0) + adjustment.get(event_type, 0))
+    return merged
+
+
+def _duration_bias_adjustment(duration_key: str) -> dict[ExploreEventType, int]:
+    adjustments = {
+        "quick": _biases(reward=-2, combat=-6, choice=-2, flavor=10),
+        "steady": _biases(reward=0, combat=0, choice=0, flavor=0),
+        "deep": _biases(reward=4, combat=5, choice=2, flavor=-11),
+        "grind": _biases(reward=8, combat=8, choice=6, flavor=-22),
+    }
+    return adjustments[duration_key]
+
+
+def _build_rukongai_focus_approaches() -> tuple[ExploreApproachDefinition, ...]:
+    approaches: list[ExploreApproachDefinition] = []
+    for focus in RUKONGAI_EXPLORE_FOCUSES:
+        for duration in RUKONGAI_EXPLORE_DURATIONS:
+            approaches.append(
+                ExploreApproachDefinition(
+                    key=f"rukongai_{focus.key}_{duration.key}",
+                    label=focus.label,
+                    duration_minutes=duration.duration_minutes,
+                    stamina_cost=duration.stamina_cost,
+                    xp_min=max(4, duration.duration_minutes * 3),
+                    xp_max=max(8, duration.duration_minutes * 5),
+                    risk_tier=duration.risk_tier,
+                    reward_tier=duration.reward_tier,
+                    event_biases=_merge_biases(
+                        focus.event_biases,
+                        _duration_bias_adjustment(duration.key),
+                    ),
+                    menu_description=f"{focus.description} {duration.description}",
+                    intro_text=focus.intro_text,
+                    focus_key=focus.key,
+                    focus_emoji=focus.emoji,
+                    focus_description=focus.description,
+                    duration_key=duration.key,
+                    duration_emoji=duration.emoji,
+                )
+            )
+    return tuple(approaches)
+
+
+RUKONGAI_STREETS_APPROACHES = _build_rukongai_focus_approaches()
 
 RUKONGAI_STREETS_EVENTS = LocationEventPool(
     reward_events=(
@@ -1111,7 +1296,7 @@ LOCATION_EXPLORATION_DEFINITIONS = {
         location_key="rukongai_streets",
         menu_title="Rukongai Streets",
         menu_description=(
-            "The streets never hand you anything. Keep your head up, pick your move, and try to carve one good break out of the night."
+            "The streets never hand you anything. Choose what you are hunting, decide how long you are willing to stay out, and see what kind of answer Rukongai gives you."
         ),
         menu_footer='"If miracles only happen once, what are they called the second time?"',
         approach_pool=RUKONGAI_STREETS_APPROACHES,
@@ -1127,6 +1312,7 @@ EXPLORE_APPROACHES = {
     approach.key: approach
     for approach in (
         *LEGACY_GENERIC_APPROACHES,
+        *LEGACY_RUKONGAI_STREETS_APPROACHES,
         *(
             approach
             for location_definition in LOCATION_EXPLORATION_DEFINITIONS.values()
@@ -1156,6 +1342,22 @@ def get_location_event_pool(location_key: str) -> LocationEventPool:
 
 def get_location_approach_pool(location_key: str) -> tuple[ExploreApproachDefinition, ...]:
     return get_location_exploration_definition(location_key).approach_pool
+
+
+def list_explore_focuses_for_location(location_key: str) -> tuple[ExploreFocusDefinition, ...]:
+    if location_key == "rukongai_streets":
+        return RUKONGAI_EXPLORE_FOCUSES
+    return ()
+
+
+def list_explore_durations() -> tuple[ExploreDurationDefinition, ...]:
+    return RUKONGAI_EXPLORE_DURATIONS
+
+
+def build_explore_approach_key(location_key: str, focus_key: str, duration_key: str) -> str:
+    if location_key == "rukongai_streets":
+        return f"rukongai_{focus_key}_{duration_key}"
+    raise ValueError(f"Unsupported exploration location for focus selection: {location_key}")
 
 
 def get_random_explore_options_for_location(

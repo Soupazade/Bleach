@@ -4,7 +4,15 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from src.data.exploration import ExploreApproachDefinition, get_explore_approach, get_location_exploration_definition
+from src.data.exploration import (
+    ExploreDurationDefinition,
+    ExploreFocusDefinition,
+    build_explore_approach_key,
+    get_explore_approach,
+    get_location_exploration_definition,
+    list_explore_durations,
+    list_explore_focuses_for_location,
+)
 from src.data.locations import get_location_definition
 from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
@@ -29,6 +37,8 @@ if TYPE_CHECKING:
 
 def build_explore_menu_embed(
     player: PlayerProfile,
+    *,
+    selected_focus: ExploreFocusDefinition | None = None,
 ) -> discord.Embed:
     location = player.location_data
     location_exploration = get_location_exploration_definition(player.location)
@@ -49,13 +59,43 @@ def build_explore_menu_embed(
         ),
         inline=False,
     )
+
+    if selected_focus is None:
+        focus_lines = []
+        for focus in list_explore_focuses_for_location(player.location):
+            focus_lines.append(
+                f"{focus.emoji} **{focus.label}**\n{focus.description}"
+            )
+        embed.add_field(
+            name="🧭 Explore Types",
+            value="\n\n".join(focus_lines),
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name=f"{selected_focus.emoji} Selected Focus",
+            value=build_explore_info_lines(
+                f"**{selected_focus.label}**",
+                selected_focus.description,
+                "Choose a duration below to decide how long you stay out in the district.",
+            ),
+            inline=False,
+        )
+
+    duration_lines = [
+        f"{duration.emoji} **{duration.label}**\n{duration.description}"
+        for duration in list_explore_durations()
+    ]
     embed.add_field(
-        name="What do you do?",
-        value="Choose your move in the district.",
+        name="⏱ Time Commitment",
+        value="\n\n".join(duration_lines),
         inline=False,
     )
     add_explore_divider(embed)
-    embed.set_footer(text=location_exploration.menu_footer)
+    if selected_focus is None:
+        embed.set_footer(text="Choose an explore type first, then choose how long you are willing to stay out.")
+    else:
+        embed.set_footer(text=location_exploration.menu_footer)
     return embed
 
 
@@ -82,8 +122,8 @@ def build_explore_started_embed(
     embed.add_field(
         name="Timing",
         value=build_explore_info_lines(
-            f"🧭 Approach: {approach.label}",
-            f"⏱ Duration: {approach.duration_minutes} minutes",
+            f"{approach.focus_emoji} Focus: {approach.label}",
+            f"{approach.duration_emoji} Duration: {approach.duration_minutes} minutes",
             f"🕓 Ends: {discord.utils.format_dt(exploration.end_time, 'R')}",
         ),
         inline=True,
@@ -116,7 +156,8 @@ def build_explore_active_embed(player: PlayerProfile, exploration: ActiveExplora
         name="Current State",
         value=build_explore_info_lines(
             f"📍 Location: {location.name}",
-            f"🧭 Approach: {approach.label}",
+            f"{approach.focus_emoji} Focus: {approach.label}",
+            f"{approach.duration_emoji} Duration: {approach.duration_minutes} minutes",
             f"⏱ Time Left: {get_exploration_remaining_time(exploration)}",
             f"🎭 Reputation: {reputation_title}",
         ),
@@ -268,34 +309,63 @@ def build_explore_training_yard_embed(player: PlayerProfile) -> discord.Embed:
     return embed
 
 
-class ExploreSelect(discord.ui.Select["ExploreView"]):
-    def __init__(self, approaches: tuple[ExploreApproachDefinition, ...]) -> None:
+class ExploreFocusSelect(discord.ui.Select["ExploreView"]):
+    def __init__(self, *, player: PlayerProfile, selected_focus_key: str | None) -> None:
         super().__init__(
-            placeholder="Choose your move in the district",
+            placeholder="Choose your explore type",
             min_values=1,
             max_values=1,
             options=[
-                *[
-                    discord.SelectOption(
-                        label=approach.dropdown_label,
-                        value=approach.key,
-                        description=approach.menu_description[:100],
-                    )
-                    for approach in approaches
-                ],
                 discord.SelectOption(
-                    label="Withdraw",
-                    value="withdraw",
-                    description="Step back and wait for a better opening.",
-                ),
+                    label=focus.label,
+                    value=focus.key,
+                    description=focus.description[:100],
+                    emoji=focus.emoji,
+                    default=focus.key == selected_focus_key,
+                )
+                for focus in list_explore_focuses_for_location(player.location)
             ],
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.view is None:
             return
+        await self.view.set_focus(interaction, self.values[0])
 
-        await self.view.handle_selection(interaction, self.values[0])
+
+class ExploreDurationSelect(discord.ui.Select["ExploreView"]):
+    def __init__(self, *, selected_focus_key: str | None) -> None:
+        super().__init__(
+            placeholder="Choose your duration",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(
+                    label=duration.label,
+                    value=duration.key,
+                    description=duration.description[:100],
+                    emoji=duration.emoji,
+                )
+                for duration in list_explore_durations()
+            ],
+            disabled=selected_focus_key is None,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.view is None:
+            return
+        await self.view.start_selected_exploration(interaction, self.values[0])
+
+
+class ExploreWithdrawButton(discord.ui.Button["ExploreView"]):
+    def __init__(self) -> None:
+        super().__init__(label="Withdraw", style=discord.ButtonStyle.secondary, emoji="⬅️")
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.view is None:
+            return
+        self.view.stop()
+        await interaction.response.edit_message(embed=build_explore_withdraw_embed(), view=None)
 
 
 class ExploreView(discord.ui.View):
@@ -304,15 +374,28 @@ class ExploreView(discord.ui.View):
         bot: "BleachBot",
         owner_id: int,
         player: PlayerProfile,
-        approaches: tuple[ExploreApproachDefinition, ...],
     ) -> None:
         super().__init__(timeout=180)
         self.bot = bot
         self.owner_id = owner_id
         self.player = player
-        self.approaches = approaches
+        self.selected_focus_key: str | None = None
         self.message: discord.Message | None = None
-        self.add_item(ExploreSelect(approaches))
+        self._rebuild_components()
+
+    def _get_selected_focus(self) -> ExploreFocusDefinition | None:
+        if self.selected_focus_key is None:
+            return None
+        return next(
+            (focus for focus in list_explore_focuses_for_location(self.player.location) if focus.key == self.selected_focus_key),
+            None,
+        )
+
+    def _rebuild_components(self) -> None:
+        self.clear_items()
+        self.add_item(ExploreFocusSelect(player=self.player, selected_focus_key=self.selected_focus_key))
+        self.add_item(ExploreDurationSelect(selected_focus_key=self.selected_focus_key))
+        self.add_item(ExploreWithdrawButton())
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.owner_id:
@@ -323,23 +406,35 @@ class ExploreView(discord.ui.View):
         )
         return False
 
-    async def handle_selection(self, interaction: discord.Interaction, selected_value: str) -> None:
-        if selected_value == "withdraw":
-            self.stop()
-            await interaction.response.edit_message(embed=build_explore_withdraw_embed(), view=None)
-            return
+    async def set_focus(self, interaction: discord.Interaction, focus_key: str) -> None:
+        self.selected_focus_key = focus_key
+        self._rebuild_components()
+        await interaction.response.edit_message(
+            embed=build_explore_menu_embed(self.player, selected_focus=self._get_selected_focus()),
+            view=self,
+        )
 
+    async def start_selected_exploration(self, interaction: discord.Interaction, duration_key: str) -> None:
+        if self.selected_focus_key is None:
+            await interaction.response.send_message("Choose an explore type first.", ephemeral=True)
+            return
         if interaction.channel_id is None:
             await interaction.response.send_message(
                 "I couldn't determine which channel to post the exploration result in.",
             )
             return
 
+        approach_key = build_explore_approach_key(
+            self.player.location,
+            self.selected_focus_key,
+            duration_key,
+        )
+
         result = await start_exploration(
             self.bot.db_pool,
             interaction.user.id,
             interaction.channel_id,
-            selected_value,
+            approach_key,
         )
 
         if result.status == "started" and result.player is not None and result.exploration is not None:

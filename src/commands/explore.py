@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from src.data.exploration import get_random_explore_options_for_location
 from src.data.training import TRAINING_YARD_LOCATION_KEY
 from src.services.location_service import channel_matches_location
 from src.services.combat_service import get_active_exploration_combat
@@ -164,8 +163,7 @@ def register_explore_command(bot: "BleachBot") -> None:
             )
             return
 
-        approaches = get_random_explore_options_for_location(player.location)
-        view = ExploreView(bot=bot, owner_id=interaction.user.id, player=player, approaches=approaches)
+        view = ExploreView(bot=bot, owner_id=interaction.user.id, player=player)
         embed = build_explore_menu_embed(player)
         await interaction.response.send_message(embed=embed, view=view)
         view.message = await interaction.original_response()

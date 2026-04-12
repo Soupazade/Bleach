@@ -105,6 +105,30 @@ def roll_resolution_flow(approach: ExploreApproachDefinition) -> ExploreFlowType
         approach.risk_tier,
         (60, 30, 10),
     )
+    if approach.focus_key == "chase_rumors":
+        instant_weight -= 8
+        single_weight += 3
+        multi_weight += 5
+    elif approach.focus_key == "look_for_fight":
+        instant_weight += 10
+        single_weight -= 4
+        multi_weight -= 6
+    elif approach.focus_key == "explore_streets":
+        single_weight += 2
+        multi_weight += 1
+        instant_weight -= 3
+
+    if approach.duration_minutes >= 10:
+        instant_weight -= 10
+        single_weight += 2
+        multi_weight += 8
+    elif approach.duration_minutes >= 5:
+        instant_weight -= 4
+        multi_weight += 4
+
+    instant_weight = max(5, instant_weight)
+    single_weight = max(5, single_weight)
+    multi_weight = max(5, multi_weight)
     return random.choices(
         ("instant", "single_choice", "multi_step"),
         weights=(instant_weight, single_weight, multi_weight),
@@ -119,6 +143,15 @@ def _roll_special_trigger(approach: ExploreApproachDefinition, *, bonus_pct: int
         "high": 0.15,
     }
     total_chance = chance_by_risk.get(approach.risk_tier, 0.12) + (bonus_pct / 100)
+    if approach.focus_key == "chase_rumors":
+        total_chance += 0.08
+    elif approach.focus_key == "explore_streets":
+        total_chance += 0.02
+
+    if approach.duration_minutes >= 10:
+        total_chance += 0.08
+    elif approach.duration_minutes >= 5:
+        total_chance += 0.04
     return random.random() < min(0.85, total_chance)
 
 
@@ -404,6 +437,8 @@ def _get_reward_loot_item(
     *,
     event_type: Literal["reward", "choice", "flavor"],
     title: str,
+    reputation_change: int,
+    approach: ExploreApproachDefinition,
 ) -> ItemDefinition | None:
     cloth_scraps = _get_loot_definition(
         item_key="cloth_scraps",
@@ -415,6 +450,9 @@ def _get_reward_loot_item(
         fallback_name="Food Scraps",
         fallback_description="A rough collection of edible leftovers. Not dignified, but still worth something.",
     )
+
+    if reputation_change < 0:
+        return food_scraps
 
     if event_type == "reward":
         if title in {"Scrap Luck", "Rumor Turned Reward", "You Find the Hideout"}:
@@ -432,6 +470,8 @@ def _get_reward_loot_item(
         return random.choice((cloth_scraps, food_scraps))
 
     if event_type == "choice":
+        if approach.focus_key == "chase_rumors":
+            return random.choice((cloth_scraps, food_scraps))
         if title == "A Lead in the Dust":
             return cloth_scraps
         if title == "Need Versus Opportunity":
@@ -453,29 +493,60 @@ def _get_reward_loot_item(
     return None
 
 
-def _roll_loot_quantity(player: PlayerProfile) -> int:
+def _roll_loot_quantity(
+    player: PlayerProfile,
+    *,
+    approach: ExploreApproachDefinition,
+    event_type: Literal["reward", "choice", "flavor"],
+    reputation_change: int,
+) -> int:
     luck_bonus = int(round(player.trait_data.bonuses.event_reward_pct * 100))
     luck_bonus += max(0, player.rukongai_rep // 25)
+    if approach.focus_key == "scavenge_supplies":
+        luck_bonus += 12
+    if approach.duration_minutes >= 5:
+        luck_bonus += 6
+    if approach.duration_minutes >= 10:
+        luck_bonus += 10
+    if event_type == "reward":
+        luck_bonus += 6
+    elif event_type == "choice":
+        luck_bonus += 3
     roll = random.randint(1, 100) + luck_bonus
-    if roll >= 92:
+    if roll >= 96:
         return 3
-    if roll >= 58:
+    if roll >= 54:
         return 2
-    return 1
+    quantity = 1
+    if reputation_change < 0:
+        quantity = max(quantity, 2)
+    return quantity
 
 
 async def _apply_explore_loot_reward(
     connection: Connection,
     *,
     player: PlayerProfile,
+    approach: ExploreApproachDefinition,
     event_type: Literal["reward", "choice", "flavor"],
     title: str,
+    reputation_change: int,
 ) -> AppliedExploreLoot | None:
-    item_definition = _get_reward_loot_item(event_type=event_type, title=title)
+    item_definition = _get_reward_loot_item(
+        event_type=event_type,
+        title=title,
+        reputation_change=reputation_change,
+        approach=approach,
+    )
     if item_definition is None:
         return None
 
-    quantity = _roll_loot_quantity(player)
+    quantity = _roll_loot_quantity(
+        player,
+        approach=approach,
+        event_type=event_type,
+        reputation_change=reputation_change,
+    )
     granted_item = await grant_inventory_item_for_connection(
         connection,
         user_id=player.user_id,
@@ -610,8 +681,10 @@ async def finalize_non_combat_resolution(
     applied_loot = await _apply_explore_loot_reward(
         connection,
         player=player,
+        approach=get_explore_approach(exploration.approach),
         event_type=event_type,
         title=title,
+        reputation_change=applied_reputation_change,
     )
     return ExplorationResolution(
         exploration=exploration,
