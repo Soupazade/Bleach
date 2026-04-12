@@ -182,8 +182,8 @@ RUKONGAI_STREETS_APPROACHES = (
         xp_max=10,
         risk_tier="low",
         reward_tier="low",
-        event_biases=_biases(reward=46, combat=16, choice=18, flavor=20),
-        menu_description="Low risk. Quick scavenging through the leftovers.",
+        event_biases=_biases(reward=54, combat=10, choice=10, flavor=26),
+        menu_description="Low risk. Best option for scavenging cloth, food scraps, and other leftovers.",
         intro_text="You drift through busted stalls and broken crates, hoping the streets left something behind.",
     ),
     ExploreApproachDefinition(
