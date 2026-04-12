@@ -52,6 +52,7 @@ from src.services.exploration.tasks import (
     get_exploration_remaining_time,
     restore_exploration_tasks,
     schedule_exploration_task,
+    start_exploration_watchdog,
 )
 from src.services.exploration.types import (
     AppliedExploreEffect,
@@ -117,5 +118,6 @@ __all__ = [
     "start_decision_combat",
     "start_exploration",
     "start_instant_combat",
+    "start_exploration_watchdog",
     "update_pending_choice",
 ]

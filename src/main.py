@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from src.commands import register_commands
 from src.database import create_pool, ensure_schema
 from src.services.combat_service import get_active_exploration_combat, restore_combat_tasks
-from src.services.exploration_service import restore_exploration_tasks
+from src.services.exploration_service import restore_exploration_tasks, start_exploration_watchdog
 from src.services.training_service import restore_training_tasks
 from src.services.travel_service import restore_travel_tasks
 from src.ui.exploration_combat_view import ExplorationCombatView
@@ -64,6 +64,7 @@ class BleachBot(discord.Client):
         self.guild_id = self._parse_guild_id()
         self.tree = BleachCommandTree(self)
         self.exploration_tasks: dict[int, asyncio.Task] = {}
+        self.exploration_watchdog_task: asyncio.Task | None = None
         self.exploration_message_refs: dict[int, int] = {}
         self.combat_tasks: dict[int, asyncio.Task] = {}
         self.combat_warning_rounds: dict[int, int] = {}
@@ -88,6 +89,7 @@ class BleachBot(discord.Client):
         await ensure_schema(self.db_pool)
         self.add_view(ExplorationChoiceView(self))
         await restore_exploration_tasks(self)
+        start_exploration_watchdog(self)
         await restore_combat_tasks(self)
         await restore_training_tasks(self)
         await restore_travel_tasks(self)
@@ -110,6 +112,8 @@ class BleachBot(discord.Client):
     async def close(self) -> None:
         for task in self.exploration_tasks.values():
             task.cancel()
+        if self.exploration_watchdog_task is not None:
+            self.exploration_watchdog_task.cancel()
         for task in self.combat_tasks.values():
             task.cancel()
         for task in self.training_tasks.values():
@@ -118,6 +122,7 @@ class BleachBot(discord.Client):
             task.cancel()
 
         self.exploration_tasks.clear()
+        self.exploration_watchdog_task = None
         self.exploration_message_refs.clear()
         self.combat_tasks.clear()
         self.combat_warning_rounds.clear()

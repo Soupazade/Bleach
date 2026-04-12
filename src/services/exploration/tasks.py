@@ -41,6 +41,21 @@ async def _run_exploration_task(bot: "BleachBot", exploration: ActiveExploration
         bot.exploration_tasks.pop(exploration.user_id, None)
 
 
+async def _run_exploration_watchdog(bot: "BleachBot") -> None:
+    try:
+        while True:
+            active_explorations = await list_active_explorations(bot.db_pool)
+            for exploration in active_explorations:
+                tracked_task = bot.exploration_tasks.get(exploration.user_id)
+                if tracked_task is None or tracked_task.done():
+                    schedule_exploration_task(bot, exploration)
+            await asyncio.sleep(5)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logging.exception("Unexpected error in exploration watchdog.")
+
+
 def schedule_exploration_task(bot: "BleachBot", exploration: ActiveExploration) -> None:
     existing_task = bot.exploration_tasks.get(exploration.user_id)
     if existing_task is not None:
@@ -53,6 +68,13 @@ async def restore_exploration_tasks(bot: "BleachBot") -> None:
     active_explorations = await list_active_explorations(bot.db_pool)
     for exploration in active_explorations:
         schedule_exploration_task(bot, exploration)
+
+
+def start_exploration_watchdog(bot: "BleachBot") -> None:
+    existing_task = getattr(bot, "exploration_watchdog_task", None)
+    if existing_task is not None:
+        existing_task.cancel()
+    bot.exploration_watchdog_task = asyncio.create_task(_run_exploration_watchdog(bot))
 
 
 def get_exploration_remaining_time(exploration: ActiveExploration) -> str:
