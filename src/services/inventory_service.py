@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 
 from asyncpg import Connection, Pool, Record
@@ -87,6 +88,7 @@ async def grant_inventory_item_for_connection(
 ) -> PlayerInventoryItem:
     normalized_quantity = max(1, quantity)
     normalized_metadata = metadata or {}
+    encoded_metadata = json.dumps(normalized_metadata)
 
     if stackable:
         existing_record = await connection.fetchrow(
@@ -128,7 +130,7 @@ async def grant_inventory_item_for_connection(
                 rarity,
                 normalized_quantity,
                 source_text,
-                normalized_metadata,
+                encoded_metadata,
             )
             return PlayerInventoryItem.from_record(updated_record)
 
@@ -158,7 +160,7 @@ async def grant_inventory_item_for_connection(
         normalized_quantity,
         stackable,
         source_text,
-        normalized_metadata,
+        encoded_metadata,
     )
     return PlayerInventoryItem.from_record(record)
 
@@ -272,4 +274,3 @@ def build_inventory_summary(items: list[PlayerInventoryItem]) -> InventorySummar
         stack_count=len(items),
         total_quantity=sum(item.quantity for item in items),
     )
-
