@@ -73,6 +73,7 @@ SOULS_FIRST_DAY_QUEST = QuestDefinition(
     reward=QuestRewardDefinition(
         xp=15,
         kan=100,
+        reputation=20,
         stat_points=5,
         items=(
             QuestRewardItemDefinition(item_key="ration_pack", quantity=2),

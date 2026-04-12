@@ -68,6 +68,8 @@ def _format_reward_lines(entry: PlayerQuestEntry) -> str:
     lines = [f"✨ XP: **{reward.xp}**"]
     if reward.kan:
         lines.append(f"💰 Kan: **{reward.kan}**")
+    if reward.reputation:
+        lines.append(f"🤝 Rukongai Rep: **+{reward.reputation}**")
     if reward.stat_points:
         lines.append(f"📈 Stat Points: **{reward.stat_points}**")
     for item in reward.items:
@@ -79,6 +81,8 @@ def _format_granted_reward_lines(update: QuestProgressUpdate) -> str:
     lines = [f"✨ XP Gained: **{update.xp_gained}**"]
     if update.kan_gained:
         lines.append(f"💰 Kan Gained: **{update.kan_gained}**")
+    if update.reputation_gained:
+        lines.append(f"🤝 Rukongai Rep: **{update.reputation_gained:+d}**")
     if update.stat_points_gained:
         lines.append(f"📈 Stat Points: **{update.stat_points_gained}**")
     for item in update.granted_items:
@@ -174,19 +178,14 @@ def build_category_embed(board: PlayerQuestBoard, category: QuestCategory) -> di
             state = STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})
             lines.append(
                 f"{state['emoji']} **{entry.quest.title}**\n"
-                f"Req. Level: **{entry.quest.min_level}** | Status: **{state['label']}**"
+                f"Req. Level: **{entry.quest.min_level}** | Status: **{state['label']}**\n"
+                "-------"
             )
         embed.add_field(
             name="📜 Posted Quests",
             value="\n\n".join(lines),
             inline=False,
         )
-
-    embed.add_field(
-        name="🗨️ Kaito's Kind of Advice",
-        value=BLEACH_QUOTES[1],
-        inline=False,
-    )
     add_explore_divider(embed)
     embed.set_footer(text="Choose a quest below to inspect its briefing.")
     return embed

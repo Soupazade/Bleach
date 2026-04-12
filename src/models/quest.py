@@ -20,6 +20,7 @@ class QuestRewardItemDefinition:
 class QuestRewardDefinition:
     xp: int
     kan: int = 0
+    reputation: int = 0
     stat_points: int = 0
     items: tuple[QuestRewardItemDefinition, ...] = ()
 
@@ -94,6 +95,7 @@ class QuestProgressUpdate:
     current_step_index: int
     xp_gained: int = 0
     kan_gained: int = 0
+    reputation_gained: int = 0
     stat_points_gained: int = 0
     levels_gained: int = 0
     granted_items: tuple[QuestRewardItemGrant, ...] = ()

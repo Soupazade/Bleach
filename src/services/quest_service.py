@@ -19,6 +19,7 @@ from src.models.quest import (
 from src.services.formulas import apply_experience_gain
 from src.services.inventory_service import grant_inventory_item_for_connection
 from src.services.player_service import get_or_sync_player_record, update_player_record
+from src.services.reputation_service import apply_reputation_change
 
 
 PLAYER_QUEST_COLUMNS = """
@@ -365,10 +366,10 @@ async def _apply_quest_rewards(
     *,
     user_id: int,
     quest: QuestDefinition,
-) -> tuple[int, int, int, int, tuple[QuestRewardItemGrant, ...]]:
+) -> tuple[int, int, int, int, int, tuple[QuestRewardItemGrant, ...]]:
     player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
     if player_sync is None:
-        return 0, 0, 0, 0, ()
+        return 0, 0, 0, 0, 0, ()
 
     player = PlayerProfile.from_record(player_sync.record)
     new_level, new_xp, levels_gained, applied_xp = apply_experience_gain(
@@ -376,6 +377,8 @@ async def _apply_quest_rewards(
         current_xp=player.xp,
         xp_gain=quest.reward.xp,
     )
+    updated_reputation = apply_reputation_change(player.rukongai_rep, quest.reward.reputation)
+    applied_reputation = updated_reputation - player.rukongai_rep
     await update_player_record(
         connection,
         user_id,
@@ -383,6 +386,7 @@ async def _apply_quest_rewards(
             "level": new_level,
             "xp": new_xp,
             "kan": player.kan + quest.reward.kan,
+            "rukongai_rep": updated_reputation,
             "unspent_stat_points": player.unspent_stat_points + quest.reward.stat_points,
         },
     )
@@ -410,7 +414,7 @@ async def _apply_quest_rewards(
             )
         )
 
-    return applied_xp, quest.reward.kan, quest.reward.stat_points, levels_gained, tuple(granted_items)
+    return applied_xp, quest.reward.kan, applied_reputation, quest.reward.stat_points, levels_gained, tuple(granted_items)
 
 
 async def record_quest_action_for_connection(
@@ -436,7 +440,7 @@ async def record_quest_action_for_connection(
         previous_step_index = record.current_step_index
         next_step_index = previous_step_index + 1
         if next_step_index >= len(quest.steps):
-            applied_xp, kan_gained, stat_points_gained, levels_gained, granted_items = await _apply_quest_rewards(
+            applied_xp, kan_gained, reputation_gained, stat_points_gained, levels_gained, granted_items = await _apply_quest_rewards(
                 connection,
                 user_id=user_id,
                 quest=quest,
@@ -457,6 +461,7 @@ async def record_quest_action_for_connection(
                     current_step_index=len(quest.steps),
                     xp_gained=applied_xp,
                     kan_gained=kan_gained,
+                    reputation_gained=reputation_gained,
                     stat_points_gained=stat_points_gained,
                     levels_gained=levels_gained,
                     granted_items=granted_items,
