@@ -390,8 +390,23 @@ async def _post_active_combat_message(
 
     view = ExplorationCombatView(bot, combat)
     embed = build_exploration_combat_embed(combat, discord_user)
-    message = await channel.send(content=f"<@{combat.user_id}>", embed=embed, view=view)
-    await _remove_old_combat_message(old_message)
+    message: discord.Message | None = None
+    if old_message is not None:
+        try:
+            await old_message.edit(
+                content=f"<@{combat.user_id}>",
+                embed=embed,
+                view=view,
+            )
+            message = old_message
+        except discord.HTTPException:
+            message = None
+
+    if message is None:
+        message = await channel.send(content=f"<@{combat.user_id}>", embed=embed, view=view)
+        if old_message is not None and old_message.id != message.id:
+            await _remove_old_combat_message(old_message)
+
     rebound = await bind_combat_message(bot.db_pool, fight_id=combat.fight_id, message_id=message.id)
     if rebound is None:
         return None
