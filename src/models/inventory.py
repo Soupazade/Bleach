@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import json
 from typing import Any, Mapping
 
 
@@ -23,7 +24,19 @@ class PlayerInventoryItem:
 
     @classmethod
     def from_record(cls, record: Mapping[str, Any]) -> "PlayerInventoryItem":
-        metadata = record["metadata"] if record["metadata"] is not None else {}
+        raw_metadata = record["metadata"]
+        if raw_metadata is None:
+            metadata: dict[str, Any] = {}
+        elif isinstance(raw_metadata, Mapping):
+            metadata = dict(raw_metadata)
+        elif isinstance(raw_metadata, str):
+            try:
+                decoded = json.loads(raw_metadata)
+            except json.JSONDecodeError:
+                decoded = {}
+            metadata = dict(decoded) if isinstance(decoded, Mapping) else {}
+        else:
+            metadata = {}
         return cls(
             id=int(record["id"]),
             user_id=int(record["user_id"]),
@@ -35,7 +48,7 @@ class PlayerInventoryItem:
             quantity=int(record["quantity"]),
             stackable=bool(record["stackable"]),
             source_text=str(record["source_text"]),
-            metadata=dict(metadata),
+            metadata=metadata,
             created_at=record["created_at"],
             updated_at=record["updated_at"],
         )
