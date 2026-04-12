@@ -48,6 +48,9 @@ class QuestDefinition:
     title: str
     short_description: str
     guide_name: str
+    difficulty: str = "Unknown"
+    lore_summary: str = ""
+    briefing_objective: str = ""
     min_level: int = 1
     auto_start: bool = False
     steps: tuple[QuestStepDefinition, ...] = ()

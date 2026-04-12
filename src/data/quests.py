@@ -16,6 +16,16 @@ SOULS_FIRST_DAY_QUEST = QuestDefinition(
     title="A Soul's First Day",
     short_description="Kaito shows you the first hard rules of surviving Rukongai.",
     guide_name="Kaito",
+    difficulty="Tutorial",
+    lore_summary=(
+        "Fresh souls do not arrive in Rukongai to comfort. They arrive hungry, confused, and easy to overlook. "
+        "Kaito is one of the many strays trying to last another day in the district, and he has learned that pity "
+        "only matters if it keeps someone moving."
+    ),
+    briefing_objective=(
+        "Survive your first real stretch in Rukongai by following Kaito through four lessons: search the streets, "
+        "turn scraps into supplies, move toward opportunity, and harden yourself in the Training Yard."
+    ),
     min_level=1,
     auto_start=False,
     steps=(

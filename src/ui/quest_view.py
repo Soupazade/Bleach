@@ -58,6 +58,14 @@ BLEACH_QUOTES = (
     '"Every step in Rukongai costs something."',
 )
 
+DIFFICULTY_META = {
+    "tutorial": "🟢 Tutorial",
+    "easy": "🟢 Easy",
+    "normal": "🟡 Standard",
+    "hard": "🟠 Dangerous",
+    "brutal": "🔴 Deadly",
+}
+
 
 def _state_text(entry: PlayerQuestEntry) -> str:
     return STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})["label"]
@@ -105,6 +113,19 @@ def _format_step_progress(entry: PlayerQuestEntry) -> str:
     return "\n".join(lines)
 
 
+def _format_difficulty_text(difficulty: str) -> str:
+    return DIFFICULTY_META.get(difficulty.lower(), f"⚪ {difficulty}")
+
+
+def _get_briefing_step(entry: PlayerQuestEntry):
+    if not entry.quest.steps:
+        return None
+    if entry.state == "available":
+        return entry.quest.steps[0], 0
+    index = min(entry.current_step_index, len(entry.quest.steps) - 1)
+    return entry.quest.steps[index], index
+
+
 def _get_default_quest_key(board: PlayerQuestBoard, category: QuestCategory) -> str | None:
     entries = board.quests_by_category.get(category, [])
     if not entries:
@@ -130,13 +151,13 @@ def build_quest_hub_embed(board: PlayerQuestBoard) -> discord.Embed:
     embed = discord.Embed(
         title="🗂️ Soul Assignment Ledger",
         description=(
-            "The board is rough, the ink is fading, and none of the work on it looks clean.\n"
-            "Pick a quest board and see what kind of road is open to you."
+            "Pinned notices, worn paper, and half-torn orders crowd the board like scars on old wood.\n"
+            "Choose a ledger and see which road through Soul Society is open to you."
         ),
         color=get_explore_color("explore"),
     )
     embed.add_field(
-        name="🧭 Available Boards",
+        name="🧭 Quest Ledgers",
         value="\n".join(
             f"{CATEGORY_META[category]['emoji']} **{CATEGORY_META[category]['title']}**\n"
             f"{CATEGORY_META[category]['tagline']}"
@@ -145,15 +166,15 @@ def build_quest_hub_embed(board: PlayerQuestBoard) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
-        name="🗨️ Street Wisdom",
+        name="📜 Soul Society Saying",
         value=build_explore_info_lines(
-            f"Level: **{board.player.level}**",
+            f"Current Level: **{board.player.level}**",
             BLEACH_QUOTES[0],
         ),
         inline=False,
     )
     add_explore_divider(embed)
-    embed.set_footer(text="Choose a board from the dropdown to start browsing.")
+    embed.set_footer(text="Choose a ledger below, then inspect a posting to open its full briefing.")
     return embed
 
 
@@ -178,7 +199,7 @@ def build_category_embed(board: PlayerQuestBoard, category: QuestCategory) -> di
             state = STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})
             lines.append(
                 f"{state['emoji']} **{entry.quest.title}**\n"
-                f"Req. Level: **{entry.quest.min_level}** | Status: **{state['label']}**\n"
+                f"Req. Level: **{entry.quest.min_level}** | Difficulty: **{entry.quest.difficulty}** | Status: **{state['label']}**\n"
                 "-------"
             )
         embed.add_field(
@@ -187,7 +208,7 @@ def build_category_embed(board: PlayerQuestBoard, category: QuestCategory) -> di
             inline=False,
         )
     add_explore_divider(embed)
-    embed.set_footer(text="Choose a quest below to inspect its briefing.")
+    embed.set_footer(text="Choose a quest below to open its mission briefing.")
     return embed
 
 
@@ -195,23 +216,35 @@ def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -
     meta = CATEGORY_META[category]
     state = STATE_META.get(entry.state, {"emoji": "📜", "label": entry.state.title()})
     color_key = "reward" if entry.state == "completed" else "choice"
+    briefing_step = _get_briefing_step(entry)
     embed = discord.Embed(
-        title=f"{meta['emoji']} {entry.quest.title}",
+        title=f"{meta['emoji']} Quest Briefing | {entry.quest.title}",
         description=entry.quest.short_description,
         color=get_explore_color(color_key),
     )
     embed.add_field(
-        name="📌 Briefing",
+        name="📌 Mission Details",
         value=build_explore_info_lines(
             f"Status: {state['emoji']} **{state['label']}**",
+            f"Requirement: **Level {entry.quest.min_level}+**",
+            f"Difficulty: **{_format_difficulty_text(entry.quest.difficulty)}**",
             f"Guide: **{entry.quest.guide_name}**",
-            f"Required Level: **{entry.quest.min_level}**",
             f"Total Steps: **{len(entry.quest.steps)}**",
         ),
         inline=False,
     )
     embed.add_field(
-        name="🧭 Step Path",
+        name="🌆 Lore",
+        value=entry.quest.lore_summary or "No lore has been posted for this assignment yet.",
+        inline=False,
+    )
+    embed.add_field(
+        name="🎯 Mission Objective",
+        value=entry.quest.briefing_objective or entry.quest.short_description,
+        inline=False,
+    )
+    embed.add_field(
+        name="🧭 Route Through Rukongai",
         value=_format_step_progress(entry),
         inline=False,
     )
@@ -231,20 +264,32 @@ def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -
         embed.set_footer(text='Completed. "Once a road is walked, it stays under your feet."')
         return embed
 
-    current_step_index = 0 if entry.state == "available" else min(entry.current_step_index, len(entry.quest.steps) - 1)
-    current_step = entry.quest.steps[current_step_index]
+    if briefing_step is None:
+        add_explore_divider(embed)
+        embed.set_footer(text="This quest has no posted steps yet.")
+        return embed
+
+    current_step, current_step_index = briefing_step
     embed.add_field(
-        name="💬 Story",
+        name="📍 Current Assignment" if entry.state == "active" else "📍 First Assignment",
+        value=build_explore_info_lines(
+            f"Step: **{current_step_index + 1}/{len(entry.quest.steps)}**",
+            f"Title: **{current_step.title}**",
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name=f"💬 {entry.quest.guide_name}",
         value=current_step.narrative_prompt,
         inline=False,
     )
     embed.add_field(
-        name="⚙️ What You'll Learn",
+        name="⚙️ What This Step Teaches",
         value="\n".join(f"• {line}" for line in current_step.system_explanation),
         inline=False,
     )
     embed.add_field(
-        name="🎯 Objective",
+        name="🎯 Immediate Objective",
         value=current_step.objective,
         inline=False,
     )
@@ -253,11 +298,29 @@ def build_quest_detail_embed(category: QuestCategory, entry: PlayerQuestEntry) -
         value=_format_reward_lines(entry),
         inline=False,
     )
+    if entry.state == "available":
+        embed.add_field(
+            name="✅ Accepting This Quest",
+            value=(
+                "Press **Accept Quest** below to post this mission to your active log. "
+                "Only actions taken after acceptance will count toward progress."
+            ),
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="🔄 Cancel / Reset",
+            value=(
+                "If this quest gets stuck or you want a clean retry, press **Cancel / Reset Quest** below. "
+                "That removes unfinished progress and places the mission back on the board so you can accept it again."
+            ),
+            inline=False,
+        )
     add_explore_divider(embed)
     if entry.state == "available":
-        embed.set_footer(text='Accept to begin. "A mission means nothing until someone steps into it."')
+        embed.set_footer(text='Accept to begin. "A posted order is just paper until someone bleeds for it."')
     else:
-        embed.set_footer(text='You can reset this unfinished quest if it gets stuck, then accept it again fresh.')
+        embed.set_footer(text='Unfinished quests can be cancelled and accepted again from this briefing.')
     return embed
 
 
@@ -372,7 +435,7 @@ class AcceptQuestButton(discord.ui.Button["QuestBoardView"]):
 
 class ResetQuestButton(discord.ui.Button["QuestBoardView"]):
     def __init__(self) -> None:
-        super().__init__(label="Reset Quest", style=discord.ButtonStyle.danger, emoji="🔄")
+        super().__init__(label="Cancel / Reset Quest", style=discord.ButtonStyle.danger, emoji="🔄")
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if self.view is None:
@@ -534,12 +597,12 @@ class QuestBoardView(discord.ui.View):
             return
         status = await reset_quest(self.bot.db_pool, interaction.user.id, self.selected_quest_key)
         await self.refresh_board()
-        self.screen = "category"
+        self.screen = "detail"
         embed = self.build_current_embed()
         if status == "reset":
             embed.add_field(
                 name="🔄 Quest Reset",
-                value="The unfinished quest was removed. You can accept it again fresh from this board.",
+                value="Your unfinished progress was cleared. This mission is posted again and can be accepted fresh right now.",
                 inline=False,
             )
         elif status == "completed":
