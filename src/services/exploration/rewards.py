@@ -417,19 +417,31 @@ def _get_reward_loot_item(
     )
 
     if event_type == "reward":
-        if title in {"Scrap Luck", "Rumor Turned Reward"}:
+        if title in {"Scrap Luck", "Rumor Turned Reward", "You Find the Hideout"}:
             return cloth_scraps
-        if title == "A Kind Hand in a Hard Place":
+        if title in {"A Kind Hand in a Hard Place", "Mercy Before Escape"}:
             return food_scraps
-        if title == "Market Edge Score":
+        if title in {
+            "Market Edge Score",
+            "The Crowd Holds the Line",
+            "Quick Hands, Hard-Won Prize",
+            "Controlled Risk, Real Gain",
+            "You Peel Off the Best Cut",
+        }:
             return random.choice((cloth_scraps, food_scraps))
+        return random.choice((cloth_scraps, food_scraps))
 
     if event_type == "choice":
         if title == "A Lead in the Dust":
             return cloth_scraps
         if title == "Need Versus Opportunity":
             return food_scraps
-        if title == "A Whisper Worth Chasing":
+        if title in {
+            "A Whisper Worth Chasing",
+            "Knowledge Carried Forward",
+            "You Settle for Less",
+            "A Smaller Score, Still Worth It",
+        }:
             return random.choice((cloth_scraps, food_scraps))
 
     if event_type == "flavor":
