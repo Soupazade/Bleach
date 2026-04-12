@@ -208,7 +208,7 @@ def build_category_embed(board: PlayerQuestBoard, category: QuestCategory) -> di
             inline=False,
         )
     add_explore_divider(embed)
-    embed.set_footer(text="Choose a quest below, or press the briefing button to open the mission file.")
+    embed.set_footer(text="Choose a quest below to open its mission briefing.")
     return embed
 
 
@@ -453,21 +453,6 @@ class BackButton(discord.ui.Button["QuestBoardView"]):
         await self.view.go_back(interaction)
 
 
-class OpenQuestBriefingButton(discord.ui.Button["QuestBoardView"]):
-    def __init__(self, quest_key: str, quest_title: str) -> None:
-        super().__init__(
-            label=f"Open {quest_title}"[:80],
-            style=discord.ButtonStyle.primary,
-            emoji="📜",
-        )
-        self.quest_key = quest_key
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        if self.view is None:
-            return
-        await self.view.open_detail(interaction, self.quest_key)
-
-
 class QuestBoardView(discord.ui.View):
     def __init__(
         self,
@@ -506,13 +491,6 @@ class QuestBoardView(discord.ui.View):
                 )
 
         if self.screen == "category":
-            entries = self.board.quests_by_category.get(self.selected_category, []) if self.selected_category is not None else []
-            if entries:
-                target_entry = next(
-                    (entry for entry in entries if entry.quest.key == self.selected_quest_key),
-                    next((entry for entry in entries if entry.state == "active"), entries[0]),
-                )
-                self.add_item(OpenQuestBriefingButton(target_entry.quest.key, target_entry.quest.title))
             self.add_item(BackButton(label="Back to Boards"))
         elif self.screen == "detail":
             entry = _get_selected_entry(self.board, self.selected_category, self.selected_quest_key) if self.selected_category else None
