@@ -424,6 +424,14 @@ def _get_reward_loot_item(
         if title == "Market Edge Score":
             return random.choice((cloth_scraps, food_scraps))
 
+    if event_type == "choice":
+        if title == "A Lead in the Dust":
+            return cloth_scraps
+        if title == "Need Versus Opportunity":
+            return food_scraps
+        if title == "A Whisper Worth Chasing":
+            return random.choice((cloth_scraps, food_scraps))
+
     if event_type == "flavor":
         if title in {"Hunger in the Air", "Small Mercy, Small Hope"}:
             return food_scraps
