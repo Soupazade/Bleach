@@ -21,6 +21,7 @@ from src.services.reputation_service import (
     format_reputation_xp_text,
     get_location_reputation_title,
 )
+from src.services.quest_service import record_quest_action
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 
 if TYPE_CHECKING:
@@ -191,6 +192,12 @@ async def post_exploration_result(bot: "BleachBot", resolution: ExplorationResol
         logging.exception("Failed to send exploration result for user %s.", resolution.exploration.user_id)
     finally:
         bot.exploration_message_refs.pop(resolution.exploration.user_id, None)
+
+    await record_quest_action(
+        bot.db_pool,
+        resolution.exploration.user_id,
+        "explore_completed",
+    )
 
 
 async def post_exploration_choice_prompt(

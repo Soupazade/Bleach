@@ -38,7 +38,7 @@ SOULS_FIRST_DAY_QUEST = QuestDefinition(
                 "Successful runs also grant experience, so exploration is one of your core gameplay loops.",
             ),
             objective="Use `/explore` and commit to one exploration run.",
-            requirement=QuestStepRequirement(action_type="explore_started"),
+            requirement=QuestStepRequirement(action_type="explore_completed"),
         ),
         QuestStepDefinition(
             title="Make Do With What You Have",

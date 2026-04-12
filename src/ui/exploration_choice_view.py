@@ -13,12 +13,15 @@ from src.services.exploration_service import (
     get_pending_exploration_choice_by_message,
     rebind_pending_exploration_prompt,
 )
+from src.services.quest_service import record_quest_action
 from src.ui.explore_embed_style import (
     add_explore_divider,
     build_explore_info_lines,
     format_option_preview,
     get_explore_color,
 )
+from src.ui.quest_view import build_quest_update_embed
+from src.ui.stat_allocation_view import send_stat_allocation_prompt
 from src.services.combat_service import schedule_combat_task
 from src.ui.exploration_combat_view import ExplorationCombatView, build_exploration_combat_embed
 
@@ -214,6 +217,23 @@ class ExplorationChoiceView(discord.ui.View):
                 embed=build_exploration_result_embed(result.resolution),
                 view=None,
             )
+            quest_updates = await record_quest_action(
+                self.bot.db_pool,
+                interaction.user.id,
+                "explore_completed",
+            )
+            for update in quest_updates:
+                await interaction.followup.send(
+                    embed=build_quest_update_embed(update),
+                    ephemeral=True,
+                )
+                if update.status == "completed" and update.stat_points_gained > 0:
+                    await send_stat_allocation_prompt(
+                        interaction,
+                        db_pool=self.bot.db_pool,
+                        owner_id=interaction.user.id,
+                        source_title="Quest Reward | Allocate Your Stat Points",
+                    )
             return
 
         await interaction.response.send_message(

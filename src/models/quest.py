@@ -7,7 +7,7 @@ from typing import Any, Literal, Mapping
 
 QuestCategory = Literal["main", "side", "daily", "repeatable"]
 QuestStatus = Literal["active", "completed"]
-QuestActionType = Literal["explore_started", "craft_item", "travel_completed", "training_started"]
+QuestActionType = Literal["explore_completed", "craft_item", "travel_completed", "training_started"]
 
 
 @dataclass(frozen=True, slots=True)
