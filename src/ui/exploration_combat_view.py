@@ -6,6 +6,7 @@ import discord
 
 from src.services.combat.abilities import list_unlocked_player_abilities
 from src.services.combat_service import (
+    get_active_exploration_combat,
     get_active_exploration_combat_by_message,
     resolve_and_post_combat_action,
 )
@@ -223,6 +224,13 @@ class ExplorationCombatView(discord.ui.View):
 
         combat = await get_active_exploration_combat_by_message(self.bot.db_pool, interaction.message.id)
         if combat is None:
+            active_combat = await get_active_exploration_combat(self.bot.db_pool, interaction.user.id)
+            if active_combat is not None:
+                await interaction.response.send_message(
+                    "That panel is out of date. Use your newest combat message to keep fighting.",
+                    ephemeral=True,
+                )
+                return
             await interaction.response.send_message("That fight is already settled.", ephemeral=True)
             return
 

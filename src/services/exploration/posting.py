@@ -168,17 +168,24 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
     return embed
 
 
-async def post_exploration_result(bot: "BleachBot", resolution: ExplorationResolution) -> None:
+async def post_exploration_result(
+    bot: "BleachBot",
+    resolution: ExplorationResolution,
+    *,
+    preferred_message: discord.Message | None = None,
+) -> None:
     channel = await _get_messageable_channel(bot, resolution.exploration.channel_id)
     if channel is None:
         return
 
     embed = build_exploration_result_embed(resolution)
-    existing_message = await _get_existing_exploration_message(
-        bot,
-        channel=channel,
-        user_id=resolution.exploration.user_id,
-    )
+    existing_message = preferred_message
+    if existing_message is None:
+        existing_message = await _get_existing_exploration_message(
+            bot,
+            channel=channel,
+            user_id=resolution.exploration.user_id,
+        )
     try:
         if existing_message is not None:
             await existing_message.edit(

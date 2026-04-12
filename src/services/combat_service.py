@@ -429,7 +429,11 @@ async def resolve_and_post_combat_action(
         if channel is not None and hasattr(channel, "send"):
             from src.services.exploration.posting import post_exploration_result
 
-            await post_exploration_result(bot, result.resolution)
+            await post_exploration_result(
+                bot,
+                result.resolution,
+                preferred_message=old_message,
+            )
             if result.blackout_applied:
                 await _sync_blackout_location_role(bot, result.combat.user_id)
         return result
