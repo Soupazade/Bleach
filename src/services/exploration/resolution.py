@@ -70,9 +70,9 @@ async def resolve_exploration(
 
             approach = get_explore_approach(exploration.approach)
             resolution_flow = roll_resolution_flow(approach)
+            current_player = await get_current_player(connection, user_id)
 
             if resolution_flow == "instant":
-                current_player = await get_current_player(connection, user_id)
                 active_effects = await list_active_player_effects_for_connection(connection, user_id)
                 event_type, title, description, base_xp, combat_outcome = roll_instant_exploration_event(exploration)
 
@@ -121,7 +121,11 @@ async def resolve_exploration(
                     resolution=resolution,
                 )
 
-            event = get_random_decision_event(exploration.location, resolution_flow)
+            event = get_random_decision_event(
+                exploration.location,
+                resolution_flow,
+                reputation_value=current_player.rukongai_rep,
+            )
             pending_choice = await create_pending_exploration_choice(
                 connection,
                 exploration,

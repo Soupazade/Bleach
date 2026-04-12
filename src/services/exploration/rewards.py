@@ -591,7 +591,10 @@ async def create_special_offer(
 ) -> ExplorationDecisionPrompt:
     from src.services.exploration.choices import build_decision_prompt
 
-    special_event = get_random_special_event(base_resolution.exploration.location)
+    special_event = get_random_special_event(
+        base_resolution.exploration.location,
+        reputation_value=base_resolution.player.rukongai_rep,
+    )
     session = await create_pending_exploration_choice(
         connection,
         base_resolution.exploration,

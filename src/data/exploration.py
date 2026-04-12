@@ -127,6 +127,8 @@ class ExplorationDecisionEventDefinition:
     flow_type: Literal["single_choice", "multi_step"]
     initial_step_id: str
     steps: tuple[ExplorationDecisionStepDefinition, ...]
+    min_rep: int | None = None
+    max_rep: int | None = None
 
     @property
     def step_count(self) -> int:
@@ -1249,6 +1251,604 @@ RUKONGAI_STREETS_SPECIAL_EVENTS = (
     ),
 )
 
+RUKONGAI_STREETS_EVENTS = LocationEventPool(
+    reward_events=RUKONGAI_STREETS_EVENTS.reward_events
+    + (
+        ExplorationEventTemplate(
+            title="Washed-Up Bundle",
+            description=(
+                "Rainwater pushes a wrapped bundle against a broken curb and everyone else misses it for one blessed second. "
+                "Inside is nothing fine, just salvage still worth the trouble of carrying home."
+            ),
+        ),
+        ExplorationEventTemplate(
+            title="Lantern Seller's Leftovers",
+            description=(
+                "A shuttered lantern stall gives up a forgotten little cache near the ash pit behind it. "
+                "The district has already chewed through the best of it, but not quite all of it."
+            ),
+        ),
+    ),
+    combat_events=RUKONGAI_STREETS_EVENTS.combat_events
+    + (
+        ExplorationEventTemplate(
+            title="Knife in the Queue",
+            description=(
+                "A food line turns jagged halfway through the run when someone decides hunger makes the rules now. "
+                "By the time you see the blade, the crowd is already breaking around it."
+            ),
+        ),
+        ExplorationEventTemplate(
+            title="Dockside Stickup",
+            description=(
+                "A narrow lane choked with old crates goes still in the wrong way. "
+                "The kind of silence that means somebody ahead has already picked a victim and is waiting to see if it's you."
+            ),
+        ),
+    ),
+    choice_events=RUKONGAI_STREETS_EVENTS.choice_events
+    + (
+        ExplorationEventTemplate(
+            title="A Lead Passed Quietly",
+            description=(
+                "Someone brushes by with a warning too soft to repeat twice. "
+                "There is a cache moving tonight, a debt changing hands, or a lie that will get somebody hurt unless the right soul follows it."
+            ),
+        ),
+        ExplorationEventTemplate(
+            title="Doorway Debt",
+            description=(
+                "A half-open doorway catches your eye at the wrong moment. "
+                "Inside, fear and bargaining are already underway, and stepping closer means deciding whether this becomes your problem too."
+            ),
+        ),
+    ),
+    flavor_events=RUKONGAI_STREETS_EVENTS.flavor_events
+    + (
+        ExplorationEventTemplate(
+            title="Smoke and Rain",
+            description=(
+                "Smoke from a dozen weak cookfires drifts low while rain starts thinking about falling. "
+                "The whole district feels like it is bracing for one more bad turn and pretending not to."
+            ),
+        ),
+        ExplorationEventTemplate(
+            title="Lanterns Behind Paper",
+            description=(
+                "Thin paper windows glow in the dark with the kind of light that means people are still awake because they have too much to lose to sleep."
+            ),
+        ),
+    ),
+)
+
+RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS = RUKONGAI_STREETS_SINGLE_CHOICE_EVENTS + (
+    ExplorationDecisionEventDefinition(
+        key="rukongai_soup_line",
+        title="Soup Line Trouble",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="One pot, too many hands",
+                description=(
+                    "A pot thin enough to insult the word soup still draws a crowd in Rukongai. "
+                    "When the line starts to fold in on itself, everyone nearby has to decide what kind of hunger they answer first."
+                ),
+                options=(
+                    _option(
+                        key="share_bowl",
+                        label="Keep it fair",
+                        style="success",
+                        outcome=_outcome(
+                            title="A Bowl Shared Around",
+                            description=(
+                                "You help hold the line together long enough for everyone to get something small. Nobody leaves full, but the block remembers who stopped the scramble."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_base",
+                            reputation_change=2,
+                        ),
+                    ),
+                    _option(
+                        key="eat_first",
+                        label="Take your share first",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Eat First",
+                            description=(
+                                "You shoulder in, take the thicker portion, and walk before anyone can stop you. It keeps you standing a little longer and leaves a sour taste that is not just the broth."
+                            ),
+                            event_type="choice",
+                            xp_profile="approach_base",
+                            reputation_change=-2,
+                        ),
+                    ),
+                    _option(
+                        key="step_back",
+                        label="Step back from it",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="Hunger Wins Quietly",
+                            description=(
+                                "You let the line sort itself out without you. Nobody thanks you, nobody curses you, and the district keeps scraping forward one thin bowl at a time."
+                            ),
+                            event_type="flavor",
+                            xp_profile="approach_low",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ExplorationDecisionEventDefinition(
+        key="rukongai_map_scrap",
+        title="Map Scrap in the Mud",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="A route someone tried to hide",
+                description=(
+                    "A half-ruined map scrap sticks to the mud under your sandal. "
+                    "The markings are rough, but they look like the kind of hand-drawn route only desperate souls pass around when supplies need to move unseen."
+                ),
+                options=(
+                    _option(
+                        key="mark_safe_route",
+                        label="Mark it for others",
+                        style="success",
+                        outcome=_outcome(
+                            title="You Mark the Safe Route",
+                            description=(
+                                "You leave the route in a way the right eyes might catch it. It costs you the private advantage, but somebody else in this district gets to make it home cleaner than they would have."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_base",
+                            reputation_change=2,
+                        ),
+                    ),
+                    _option(
+                        key="pocket_route",
+                        label="Keep it to yourself",
+                        style="danger",
+                        outcome=_outcome(
+                            title="Lead Kept Close",
+                            description=(
+                                "You fold the map scrap into your sleeve and keep moving. A private route is worth more than goodwill on a hungry night."
+                            ),
+                            event_type="choice",
+                            xp_profile="approach_high",
+                            reputation_change=-2,
+                        ),
+                    ),
+                    _option(
+                        key="let_mud_take_it",
+                        label="Leave it in the mud",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="The Street Keeps Its Secret",
+                            description=(
+                                "You leave the scrap where it lies. Maybe it was a trap. Maybe it was a lifeline. Either way, it stops being yours the second you walk on."
+                            ),
+                            event_type="flavor",
+                            xp_profile="approach_low",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ExplorationDecisionEventDefinition(
+        key="rukongai_breathless_courier",
+        title="A Breathless Courier",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="The message matters to someone",
+                description=(
+                    "A runner nearly crashes into you with blood on one sleeve and panic in both eyes. "
+                    "Whatever message they are carrying matters enough for people to chase it."
+                ),
+                options=(
+                    _option(
+                        key="help_message",
+                        label="Help them through",
+                        style="success",
+                        outcome=_outcome(
+                            title="The Message Gets Through",
+                            description=(
+                                "You cut the runner through the safer side of the block and buy them just enough room to keep moving. Somewhere ahead, a family or a friend gets warned in time."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_base",
+                            reputation_change=2,
+                        ),
+                    ),
+                    _option(
+                        key="take_fee",
+                        label="Take a fee first",
+                        style="danger",
+                        outcome=_outcome(
+                            title="A Fee Taken in Fear",
+                            description=(
+                                "You make the runner pay before you point the way. They hand it over because fear has already done the arguing for you."
+                            ),
+                            event_type="choice",
+                            xp_profile="approach_base",
+                            reputation_change=-2,
+                        ),
+                    ),
+                    _option(
+                        key="not_yours",
+                        label="Let them run alone",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="Not Your Message",
+                            description=(
+                                "You leave the runner to their own luck. In Rukongai, there is always another desperate message and never enough souls willing to carry it."
+                            ),
+                            event_type="flavor",
+                            xp_profile="approach_low",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
+RUKONGAI_STREETS_MULTI_STEP_EVENTS = RUKONGAI_STREETS_MULTI_STEP_EVENTS + (
+    ExplorationDecisionEventDefinition(
+        key="rukongai_floorboard_cache",
+        title="Lead Under the Floorboards",
+        flow_type="multi_step",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="Something is hidden under the room",
+                description=(
+                    "A loose board inside a half-collapsed room thumps wrong under your weight. "
+                    "Someone hid something here on purpose, and the old woman watching from the doorway definitely knows more than she wants to say."
+                ),
+                options=(
+                    _option(key="pry_boards", label="Pry up the boards", style="primary", next_step_id="boards_step"),
+                    _option(key="ask_watcher", label="Ask the watcher", style="success", next_step_id="watcher_step"),
+                    _option(
+                        key="leave_room",
+                        label="Leave it alone",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="You Leave the Floor to Its Secret",
+                            description=(
+                                "You walk back out and leave the room to its silence. Some secrets in Rukongai stay alive because people know when not to touch them."
+                            ),
+                            event_type="flavor",
+                            xp_profile="approach_low",
+                        ),
+                    ),
+                ),
+            ),
+            ExplorationDecisionStepDefinition(
+                key="boards_step",
+                title="There is a cache, but not a private one",
+                description=(
+                    "The floor gives up a small hidden stash of preserved food and scrap cloth. "
+                    "The room belonged to a dead family, and the nearby doors are open just enough to prove the block knows what you found."
+                ),
+                options=(
+                    _option(
+                        key="share_cache",
+                        label="Share it with the block",
+                        style="success",
+                        outcome=_outcome(
+                            title="The Cache Feeds Three Homes",
+                            description=(
+                                "You split the find instead of claiming it all. It is still too little for the need around you, but the block watches the choice and does not forget it."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_high",
+                            reputation_change=5,
+                        ),
+                    ),
+                    _option(
+                        key="strip_cache",
+                        label="Clear it out and move",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Clear the Hiding Place Out",
+                            description=(
+                                "You take everything before the watching doors can fully open. The haul is real. So is the story that starts spreading behind you."
+                            ),
+                            event_type="choice",
+                            xp_profile="approach_high",
+                            reputation_change=-5,
+                        ),
+                    ),
+                ),
+            ),
+            ExplorationDecisionStepDefinition(
+                key="watcher_step",
+                title="The old woman sets a price",
+                description=(
+                    "The old woman tells you the room is tied to a family that still has kin on the block. "
+                    "She can tell you what is safe to take and what is not, but only if she decides you deserve the truth."
+                ),
+                options=(
+                    _option(
+                        key="show_respect",
+                        label="Show respect",
+                        style="primary",
+                        outcome=_outcome(
+                            title="A Quiet Name Opens a Door",
+                            description=(
+                                "You lower your voice, mind your tongue, and let the old woman decide how much to share. In return, she points you toward the part of the stash nobody will call theft."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_base",
+                            reputation_change=2,
+                        ),
+                    ),
+                    _option(
+                        key="push_hard",
+                        label="Push her for the location",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Learn It the Ugly Way",
+                            description=(
+                                "You press too hard, and the room answers with more than words. The block does not like being leaned on, even by someone desperate."
+                            ),
+                            event_type="combat",
+                            xp_profile="combat_win",
+                            reputation_change=-2,
+                            combat_outcome="Victory",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ExplorationDecisionEventDefinition(
+        key="rukongai_lantern_debt",
+        title="Lantern Debt at Dusk",
+        flow_type="multi_step",
+        initial_step_id="step_one",
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="A debt comes due under weak light",
+                description=(
+                    "A collector corners a debtor under two paper lanterns that are already burning low. "
+                    "The whole stretch is listening through walls, waiting to see whether this ends in shame, blood, or somebody getting clever."
+                ),
+                options=(
+                    _option(key="back_debtor", label="Back the debtor", style="success", next_step_id="debtor_step"),
+                    _option(key="trail_collector", label="Trail the collector", style="primary", next_step_id="collector_step"),
+                    _option(
+                        key="pass_lane",
+                        label="Keep moving",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="Lantern Light on Someone Else's Trouble",
+                            description=(
+                                "You leave the lane to its own bad ending. In Rukongai, walking away is not always cowardice. Sometimes it is math."
+                            ),
+                            event_type="flavor",
+                            xp_profile="approach_low",
+                        ),
+                    ),
+                ),
+            ),
+            ExplorationDecisionStepDefinition(
+                key="debtor_step",
+                title="Now everyone is looking at you too",
+                description=(
+                    "The second you step in, the collector has to decide whether your face means problem or opportunity. "
+                    "Either way, the debtor is no longer the only one being measured."
+                ),
+                options=(
+                    _option(
+                        key="cover_cost",
+                        label="Help settle it",
+                        style="success",
+                        outcome=_outcome(
+                            title="Debt Eased for One Night",
+                            description=(
+                                "You keep the lane from turning vicious and buy the debtor one more night without a beating. It is not a clean victory, but it keeps the block from cracking open."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_base",
+                            reputation_change=2,
+                        ),
+                    ),
+                    _option(
+                        key="throw_first",
+                        label="Throw the first blow",
+                        style="danger",
+                        outcome=_outcome(
+                            title="Collector Driven Off",
+                            description=(
+                                "You hit first and hard enough to end the question. The lane goes dead quiet after, which in Rukongai usually means people approved more than they will ever say."
+                            ),
+                            event_type="combat",
+                            xp_profile="combat_win",
+                            reputation_change=2,
+                            combat_outcome="Victory",
+                        ),
+                    ),
+                ),
+            ),
+            ExplorationDecisionStepDefinition(
+                key="collector_step",
+                title="The money changes hands in the dark",
+                description=(
+                    "You follow the collector long enough to see where the payment gets moved. "
+                    "It is a smaller handoff than the fear around it suggested, but still enough to matter to someone hungry."
+                ),
+                options=(
+                    _option(
+                        key="steal_purse",
+                        label="Lift the payment",
+                        style="primary",
+                        outcome=_outcome(
+                            title="You Walk Off with the Payment",
+                            description=(
+                                "You take the purse in the shuffle and vanish before the shouting starts. Dirty work, clean exit, and a few days of easier breathing bought the hard way."
+                            ),
+                            event_type="choice",
+                            xp_profile="approach_high",
+                            reputation_change=-2,
+                        ),
+                    ),
+                    _option(
+                        key="sell_doorway",
+                        label="Sell out the debtor's door",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Sell a Doorway Cheap",
+                            description=(
+                                "You trade the last useful detail for a quick cut of the take. It pays better than dignity, which is exactly why the district keeps making this kind of soul."
+                            ),
+                            event_type="reward",
+                            xp_profile="approach_high",
+                            reputation_change=-5,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
+RUKONGAI_STREETS_SPECIAL_EVENTS = RUKONGAI_STREETS_SPECIAL_EVENTS + (
+    ExplorationDecisionEventDefinition(
+        key="rukongai_special_trusted_knock",
+        title="A Trusted Knock After Dark",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        min_rep=21,
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="Someone finally opens the door",
+                description=(
+                    "A quiet family pulls you into a doorway because your name has been spoken well enough to matter. "
+                    "They have a problem bigger than fear and smaller than a miracle, which means it belongs to Rukongai."
+                ),
+                options=(
+                    _option(
+                        key="hide_family",
+                        label="Help hide them",
+                        style="success",
+                        outcome=_outcome(
+                            title="A Door Opens for the Worthy",
+                            description=(
+                                "You use your standing to move the family before the wrong men arrive. It is not glory. It is better than glory. It is trust paying something back."
+                            ),
+                            event_type="reward",
+                            xp_profile="special_high",
+                            reputation_change=5,
+                        ),
+                    ),
+                    _option(
+                        key="hold_watch",
+                        label="Hold the alley mouth",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Hold the Alley Mouth",
+                            description=(
+                                "You buy the family time with your own body and name, planting yourself where the lane narrows and making the problem come through you first."
+                            ),
+                            event_type="combat",
+                            xp_profile="special_combat_win",
+                            reputation_change=2,
+                            combat_outcome="Victory",
+                        ),
+                    ),
+                    _option(
+                        key="refuse_risk",
+                        label="Refuse the risk",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="Trust Left Unanswered",
+                            description=(
+                                "You step away even after the door opened for you. They do not curse you. Somehow that silence is worse."
+                            ),
+                            event_type="flavor",
+                            xp_profile="special_base",
+                            reputation_change=-2,
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ExplorationDecisionEventDefinition(
+        key="rukongai_special_crooked_offer",
+        title="Crooked Offer in the Smoke",
+        flow_type="single_choice",
+        initial_step_id="step_one",
+        max_rep=-21,
+        steps=(
+            ExplorationDecisionStepDefinition(
+                key="step_one",
+                title="The wrong kind of name opens the wrong kind of door",
+                description=(
+                    "A back-room runner flags you down because your reputation says you might hear the rest of the sentence instead of spitting in his face. "
+                    "There is a score on the table, but none of it comes clean."
+                ),
+                options=(
+                    _option(
+                        key="rob_cut",
+                        label="Take the mean cut",
+                        style="danger",
+                        outcome=_outcome(
+                            title="You Walk Off with the Mean Cut",
+                            description=(
+                                "You take the ugliest part of the score because it pays the fastest. Nobody involved mistakes you for decent after, least of all you."
+                            ),
+                            event_type="reward",
+                            xp_profile="special_high",
+                            reputation_change=-5,
+                        ),
+                    ),
+                    _option(
+                        key="sell_name",
+                        label="Sell a name for supper",
+                        style="primary",
+                        outcome=_outcome(
+                            title="A Name Sold for Supper",
+                            description=(
+                                "You give up the name they want and take the payment before conscience has time to get loud. The district will eat what is left of that choice later."
+                            ),
+                            event_type="choice",
+                            xp_profile="special_base",
+                            reputation_change=-5,
+                        ),
+                    ),
+                    _option(
+                        key="back_off",
+                        label="Back off anyway",
+                        style="secondary",
+                        outcome=_outcome(
+                            title="Even You Know Better Tonight",
+                            description=(
+                                "You walk away from the offer before it can stain you deeper. In a place like this, even a bad name sometimes finds one line it still refuses to cross."
+                            ),
+                            event_type="flavor",
+                            xp_profile="special_base",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
 LEGACY_GENERIC_APPROACHES = (
     ExploreApproachDefinition(
         key="cautious_search",
@@ -1386,6 +1986,8 @@ def get_random_explore_options_for_location(
 def get_random_decision_event(
     location_key: str,
     flow_type: Literal["single_choice", "multi_step"],
+    *,
+    reputation_value: int | None = None,
 ) -> ExplorationDecisionEventDefinition:
     location_definition = get_location_exploration_definition(location_key)
     pool = (
@@ -1393,7 +1995,13 @@ def get_random_decision_event(
         if flow_type == "single_choice"
         else location_definition.multi_step_events
     )
-    return random.choice(pool)
+    eligible_pool = tuple(
+        event
+        for event in pool
+        if (event.min_rep is None or reputation_value is None or reputation_value >= event.min_rep)
+        and (event.max_rep is None or reputation_value is None or reputation_value <= event.max_rep)
+    )
+    return random.choice(eligible_pool or pool)
 
 
 def get_random_special_offer_template(location_key: str) -> ExplorationEventTemplate:
@@ -1401,9 +2009,19 @@ def get_random_special_offer_template(location_key: str) -> ExplorationEventTemp
     return random.choice(location_definition.special_offer_templates)
 
 
-def get_random_special_event(location_key: str) -> ExplorationDecisionEventDefinition:
+def get_random_special_event(
+    location_key: str,
+    *,
+    reputation_value: int | None = None,
+) -> ExplorationDecisionEventDefinition:
     location_definition = get_location_exploration_definition(location_key)
-    return random.choice(location_definition.special_events)
+    eligible_pool = tuple(
+        event
+        for event in location_definition.special_events
+        if (event.min_rep is None or reputation_value is None or reputation_value >= event.min_rep)
+        and (event.max_rep is None or reputation_value is None or reputation_value <= event.max_rep)
+    )
+    return random.choice(eligible_pool or location_definition.special_events)
 
 
 def get_decision_event_definition(
