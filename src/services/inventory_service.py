@@ -120,6 +120,7 @@ async def grant_inventory_item_for_connection(
                     metadata = $9,
                     updated_at = NOW()
                 WHERE id = $1
+                  AND user_id = $2
                 RETURNING {PLAYER_INVENTORY_COLUMNS}
                 """,
                 int(existing_record["id"]),

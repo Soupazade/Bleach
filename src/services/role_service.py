@@ -4,7 +4,11 @@ import discord
 
 from src.data.game_constants import SOUL_ROLE_ID
 from src.data.locations import LOCATIONS, LocationDefinition
-from src.services.location_service import get_location_role_names, resolve_location_role
+from src.services.location_service import (
+    find_any_location_roles,
+    resolve_location_role,
+    role_matches_location,
+)
 
 
 def get_location_role_ids() -> set[int]:
@@ -21,17 +25,11 @@ async def sync_member_location_role(
     *,
     reason: str,
 ) -> tuple[str | None, str | None]:
-    location_role_ids = get_location_role_ids()
-    location_role_names = get_location_role_names()
     target_role = resolve_location_role(member.guild, target_location)
-    target_role_id = target_role.id if target_role is not None else target_location.role_id
-    target_role_name = target_role.name if target_role is not None else (target_location.role_name or target_location.name)
     roles_to_remove = [
         role
-        for role in member.roles
-        if (role.id in location_role_ids or role.name in location_role_names)
-        and role.id != target_role_id
-        and role.name != target_role_name
+        for role in find_any_location_roles(member.roles)
+        if not role_matches_location(role, target_location)
     ]
     roles_to_add: list[discord.Role] = []
     warnings: list[str] = []
@@ -39,7 +37,7 @@ async def sync_member_location_role(
 
     if target_role is None:
         warnings.append("Target location role was not found in this guild.")
-    elif target_role not in member.roles:
+    elif all(role.id != target_role.id for role in member.roles):
         roles_to_add.append(target_role)
 
     if roles_to_remove:
@@ -72,11 +70,10 @@ async def remove_player_roles(
     *,
     reason: str,
 ) -> tuple[str | None, str | None]:
-    removable_role_ids = get_location_role_ids() | {SOUL_ROLE_ID}
-    removable_role_names = get_location_role_names()
+    location_roles = find_any_location_roles(member.roles)
     roles_to_remove = [
         role for role in member.roles
-        if role.id in removable_role_ids or role.name in removable_role_names
+        if role.id == SOUL_ROLE_ID or role in location_roles
     ]
 
     if not roles_to_remove:
