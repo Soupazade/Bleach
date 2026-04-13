@@ -77,6 +77,7 @@ class ExploreFocusDefinition:
     label: str
     emoji: str
     description: str
+    menu_description: str
     intro_text: str
     event_biases: dict[ExploreEventType, int]
 
@@ -375,6 +376,7 @@ RUKONGAI_EXPLORE_FOCUSES = (
         label="Explore the Streets",
         emoji="🧭",
         description="A broad run through Rukongai where anything from scraps to danger to quiet human moments can find you.",
+        menu_description="Balanced run for scraps, danger, and street moments.",
         intro_text=(
             "You move through the district without forcing one narrow goal, reading the rhythm of the streets and taking whatever opening the night offers."
         ),
@@ -385,6 +387,7 @@ RUKONGAI_EXPLORE_FOCUSES = (
         label="Scavenge for Supplies",
         emoji="🧺",
         description="Best for cloth scraps, food scraps, and the rough little materials that keep you alive long enough to craft.",
+        menu_description="Best for cloth, food scraps, and crafting materials.",
         intro_text=(
             "You keep your eyes on broken stalls, discarded bundles, cookfires gone cold, and every corner where hunger might have left something behind."
         ),
@@ -395,6 +398,7 @@ RUKONGAI_EXPLORE_FOCUSES = (
         label="Help the District",
         emoji="🤝",
         description="Best for reputation, hard moral choices, and the kind of street memory that changes how people look at you.",
+        menu_description="Best for reputation, moral choices, and local goodwill.",
         intro_text=(
             "You spend the run watching for people about to be cornered, cheated, or crushed under the weight of another bad night in Rukongai."
         ),
@@ -405,6 +409,7 @@ RUKONGAI_EXPLORE_FOCUSES = (
         label="Chase Rumors",
         emoji="👂",
         description="Best for leads, whispers, hidden routes, NPC trouble, and the kind of clue that can turn into a bigger score later.",
+        menu_description="Best for leads, whispers, hidden routes, and clues.",
         intro_text=(
             "You trail whispers from washlines, cookfires, doorway mutters, and half-swallowed warnings, trusting that one real lead is buried somewhere in the noise."
         ),
@@ -415,6 +420,7 @@ RUKONGAI_EXPLORE_FOCUSES = (
         label="Look for a Fight",
         emoji="⚔️",
         description="Best for combat, danger, and higher XP if you can walk away from the clash still standing.",
+        menu_description="Best for combat, danger, and higher XP.",
         intro_text=(
             "You stop pretending tonight will stay quiet and start hunting the places where pressure, anger, and fear are about to break into violence."
         ),

@@ -319,7 +319,7 @@ class ExploreFocusSelect(discord.ui.Select["ExploreView"]):
                 discord.SelectOption(
                     label=focus.label,
                     value=focus.key,
-                    description=focus.description[:100],
+                    description=focus.menu_description[:100],
                     emoji=focus.emoji,
                     default=focus.key == selected_focus_key,
                 )
