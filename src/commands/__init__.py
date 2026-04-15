@@ -1,4 +1,5 @@
 from src.commands.craft import register_craft_command
+from src.commands.dungeon import register_dungeon_command
 from src.commands.explore import register_explore_command
 from src.commands.fightlog import register_fightlog_command
 from src.commands.fighttest import register_fighttest_command
@@ -23,6 +24,7 @@ def register_commands(bot) -> None:
     register_use_command(bot)
     register_shop_command(bot)
     register_fighttest_command(bot)
+    register_dungeon_command(bot)
     register_explore_command(bot)
     register_train_command(bot)
     register_travel_command(bot)

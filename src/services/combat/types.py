@@ -8,7 +8,7 @@ from src.models.exploration import ActiveExploration
 
 
 CombatAction = Literal["strike", "guard", "retreat", "ability", "bandage"]
-CombatSourceKind = Literal["exploration", "fighttest"]
+CombatSourceKind = Literal["exploration", "fighttest", "dungeon"]
 CombatResolutionType = Literal["victory", "defeat", "retreated"]
 AbilityTargeting = Literal["single", "all"]
 

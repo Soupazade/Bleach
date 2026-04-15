@@ -59,6 +59,7 @@ class CombatAdvanceResult:
     resolution: "ExplorationResolution | None" = None
     fight_embed: discord.Embed | None = None
     blackout_applied: bool = False
+    resolution_type: Literal["victory", "defeat", "retreated"] | None = None
     message: str | None = None
 
 
@@ -210,6 +211,52 @@ async def create_active_exploration_combat(
     return session
 
 
+async def create_active_dungeon_combat(
+    connection: Connection,
+    *,
+    user_id: int,
+    channel_id: int,
+    message_id: int | None,
+    location: str,
+    approach: str,
+    player: PlayerProfile,
+    room,
+    combat_snapshot: EffectiveCombatSnapshot | None = None,
+) -> CombatSession:
+    combat_definition = room.combat
+    if combat_definition is None:
+        raise ValueError(f"Room {room.key} does not define a combat encounter.")
+
+    enemy = combat_definition.enemy_template
+    fight_log = await create_fight_log(
+        connection,
+        user_id=user_id,
+        source_kind="dungeon",
+        readable_log=_build_initial_log_text(player, enemy, "dungeon"),
+    )
+    session = await create_active_combat(
+        connection,
+        fight_log_id=fight_log.fight_log_id,
+        user_id=user_id,
+        channel_id=channel_id,
+        message_id=message_id,
+        source_kind="dungeon",
+        location=location,
+        approach=approach,
+        encounter_title=combat_definition.encounter_title,
+        encounter_description=combat_definition.encounter_description,
+        resolution_title=combat_definition.resolution_title,
+        resolution_description=combat_definition.resolution_description,
+        reward_xp_win=combat_definition.xp_reward_win,
+        reward_xp_lose=combat_definition.xp_reward_lose,
+        reputation_change=combat_definition.reputation_change_win,
+        player=_build_player_entity(player, combat_snapshot),
+        enemies=(_build_enemy_entity(enemy),),
+    )
+    await bind_fight_log_to_fight(connection, fight_log_id=fight_log.fight_log_id, fight_id=session.fight_id)
+    return session
+
+
 async def delete_active_exploration_combat(connection: Connection, user_id: int) -> None:
     await delete_active_combat(connection, user_id)
 
@@ -311,7 +358,13 @@ async def _advance_combat(
                     reputation_change=updated_session.reputation_change,
                 )
                 await finalize_fight_log(connection, fight_log_id=updated_session.fight_log_id, outcome=round_outcome.resolution_type)
-                return CombatAdvanceResult(status="resolved", combat=updated_session, resolution=resolution, blackout_applied=round_outcome.resolution_type == "defeat")
+                return CombatAdvanceResult(
+                    status="resolved",
+                    combat=updated_session,
+                    resolution=resolution,
+                    blackout_applied=round_outcome.resolution_type == "defeat",
+                    resolution_type=round_outcome.resolution_type,
+                )
 
             player_sync = await get_or_sync_player_record(connection, user_id, for_update=True)
             if player_sync is None:
@@ -342,7 +395,13 @@ async def _advance_combat(
                 title=round_outcome.resolution_title or updated_session.resolution_title,
                 description=round_outcome.resolution_description or updated_session.resolution_description,
             )
-            return CombatAdvanceResult(status="resolved", combat=updated_session, fight_embed=result_embed, blackout_applied=blackout_applied)
+            return CombatAdvanceResult(
+                status="resolved",
+                combat=updated_session,
+                fight_embed=result_embed,
+                blackout_applied=blackout_applied,
+                resolution_type=round_outcome.resolution_type,
+            )
 
 
 async def _remove_old_combat_message(message: discord.Message | None) -> None:
@@ -451,6 +510,55 @@ async def resolve_and_post_combat_action(
             )
             if result.blackout_applied:
                 await _sync_blackout_location_role(bot, result.combat.user_id)
+        return result
+    if result.status == "resolved" and result.combat is not None and result.combat.source_kind == "dungeon":
+        from src.services.dungeon_service import resolve_dungeon_combat
+        from src.ui.dungeon_view import (
+            DungeonView,
+            build_dungeon_completion_embed,
+            build_dungeon_failure_embed,
+            build_dungeon_room_embed,
+        )
+
+        dungeon_result = await resolve_dungeon_combat(
+            bot.db_pool,
+            user_id=result.combat.user_id,
+            outcome=result.resolution_type or "defeat",
+        )
+        if old_message is None:
+            return result
+        if dungeon_result.status == "updated" and dungeon_result.player is not None and dungeon_result.run is not None:
+            await old_message.edit(
+                content=f"<@{result.combat.user_id}>",
+                embed=build_dungeon_room_embed(dungeon_result.player, dungeon_result.run),
+                view=DungeonView(bot, dungeon_result.run),
+            )
+            return result
+        if dungeon_result.status == "completed" and dungeon_result.player is not None and dungeon_result.progress is not None:
+            await old_message.edit(
+                content=f"<@{result.combat.user_id}>",
+                embed=build_dungeon_completion_embed(
+                    dungeon_result.player,
+                    dungeon_key=result.combat.approach,
+                    progress=dungeon_result.progress,
+                ),
+                view=None,
+            )
+            return result
+        if dungeon_result.status == "failed" and dungeon_result.player is not None and dungeon_result.progress is not None:
+            await old_message.edit(
+                content=f"<@{result.combat.user_id}>",
+                embed=build_dungeon_failure_embed(
+                    dungeon_result.player,
+                    dungeon_key=result.combat.approach,
+                    progress=dungeon_result.progress,
+                    outcome=result.resolution_type or "defeat",
+                ),
+                view=None,
+            )
+            if result.blackout_applied:
+                await _sync_blackout_location_role(bot, result.combat.user_id)
+            return result
         return result
     if result.status == "resolved" and result.fight_embed is not None and result.combat is not None:
         if old_message is not None:

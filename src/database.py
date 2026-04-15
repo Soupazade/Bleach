@@ -52,6 +52,20 @@ CREATE TABLE IF NOT EXISTS active_explorations (
 );
 """
 
+CREATE_ACTIVE_DUNGEONS_TABLE = """
+CREATE TABLE IF NOT EXISTS active_dungeons (
+    user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT,
+    dungeon_key TEXT NOT NULL,
+    location TEXT NOT NULL,
+    current_room_index INTEGER NOT NULL DEFAULT 0,
+    progress_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
 CREATE_ACTIVE_TRAVELS_TABLE = """
 CREATE TABLE IF NOT EXISTS active_travels (
     user_id BIGINT PRIMARY KEY REFERENCES player_profiles(user_id) ON DELETE CASCADE,
@@ -290,6 +304,12 @@ CREATE INDEX IF NOT EXISTS idx_active_explorations_end_time
 ON active_explorations (end_time);
 """
 
+CREATE_ACTIVE_DUNGEONS_MESSAGE_ID_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_dungeons_message_id
+ON active_dungeons (message_id)
+WHERE message_id IS NOT NULL;
+"""
+
 CREATE_ACTIVE_TRAVELS_END_TIME_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_active_travels_end_time
 ON active_travels (end_time);
@@ -491,6 +511,8 @@ async def ensure_schema(pool: asyncpg.Pool | None) -> None:
         await connection.execute(CREATE_PLAYER_PROFILE_USER_ID_INDEX)
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_TABLE)
         await connection.execute(CREATE_ACTIVE_EXPLORATIONS_END_TIME_INDEX)
+        await connection.execute(CREATE_ACTIVE_DUNGEONS_TABLE)
+        await connection.execute(CREATE_ACTIVE_DUNGEONS_MESSAGE_ID_INDEX)
         await connection.execute(CREATE_ACTIVE_TRAVELS_TABLE)
         await connection.execute(CREATE_ACTIVE_TRAVELS_END_TIME_INDEX)
         await connection.execute(CREATE_ACTIVE_TRAININGS_TABLE)
