@@ -22,14 +22,14 @@ if TYPE_CHECKING:
 
 
 def register_dungeon_command(bot: "BleachBot") -> None:
-    @bot.tree.command(name="dungeon", description="Enter the first Rukongai test dungeon.")
+    @bot.tree.command(name="dungeon", description="Enter the Outskirts bandit hideout.")
     @app_commands.guild_only()
     async def dungeon(interaction: discord.Interaction) -> None:
         if bot.db_pool is None:
             await interaction.response.send_message(
                 embed=build_dungeon_blocked_embed(
                     "Dungeon Unavailable",
-                    "The tunnel records are not reachable right now.",
+                    "The hideout records are not reachable right now.",
                 ),
                 ephemeral=True,
             )
@@ -40,7 +40,7 @@ def register_dungeon_command(bot: "BleachBot") -> None:
             await interaction.response.send_message(
                 embed=build_dungeon_blocked_embed(
                     "No Soul Record Found",
-                    "You need to use `/start` before Rukongai will trust you with its tunnels.",
+                    "You need to use `/start` before Rukongai lets you press into the Outskirts alone.",
                 ),
                 ephemeral=True,
             )
@@ -50,7 +50,7 @@ def register_dungeon_command(bot: "BleachBot") -> None:
             await interaction.response.send_message(
                 embed=build_dungeon_blocked_embed(
                     "Wrong District",
-                    "The tunnel mouth is hidden in your current district. Step into the right room before you try to force the run.",
+                    "The bandit hideout is tucked away in your current district. Step into the right room before you try to force the run.",
                 ),
                 ephemeral=True,
             )
@@ -73,6 +73,12 @@ def register_dungeon_command(bot: "BleachBot") -> None:
             await interaction.response.send_message(
                 embed=build_dungeon_room_embed(player, existing_run),
                 view=DungeonView(bot, existing_run),
+            )
+            message = await interaction.original_response()
+            await bind_dungeon_message(
+                bot.db_pool,
+                user_id=interaction.user.id,
+                message_id=message.id,
             )
             return
 
@@ -126,6 +132,12 @@ def register_dungeon_command(bot: "BleachBot") -> None:
                 embed=build_dungeon_room_embed(result.player, result.run),
                 view=DungeonView(bot, result.run),
             )
+            message = await interaction.original_response()
+            await bind_dungeon_message(
+                bot.db_pool,
+                user_id=interaction.user.id,
+                message_id=message.id,
+            )
             return
 
         if result.status == "active_combat":
@@ -152,7 +164,7 @@ def register_dungeon_command(bot: "BleachBot") -> None:
             await interaction.response.send_message(
                 embed=build_dungeon_blocked_embed(
                     "Wrong District",
-                    "This first test dungeon is hidden in the Rukongai Streets.",
+                    "This dungeon is hidden in the Rukongai Outskirts.",
                 ),
                 ephemeral=True,
             )
@@ -163,7 +175,7 @@ def register_dungeon_command(bot: "BleachBot") -> None:
                 embed=build_dungeon_blocked_embed(
                     "Not Enough Stamina",
                     (
-                        "You do not have enough left in you to force the tunnel.\n"
+                        "You do not have enough left in you to force the hideout.\n"
                         f"Current: **{result.player.stamina_current}/{result.player.stamina_max}**\n"
                         f"Required: **{result.stamina_cost}**"
                     ),
@@ -175,7 +187,7 @@ def register_dungeon_command(bot: "BleachBot") -> None:
         await interaction.response.send_message(
             embed=build_dungeon_blocked_embed(
                 "Dungeon Failed",
-                "I could not open the tunnel cleanly right now.",
+                "I could not open the hideout cleanly right now.",
             ),
             ephemeral=True,
         )

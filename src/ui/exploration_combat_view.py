@@ -10,6 +10,7 @@ from src.services.combat_service import (
     get_active_exploration_combat_by_message,
     resolve_and_post_combat_action,
 )
+from src.services.dungeon_service import get_active_dungeon_run
 from src.services.combat.types import CombatSession
 from src.ui.explore_embed_style import add_explore_divider, build_explore_info_lines, get_explore_color
 
@@ -231,6 +232,32 @@ class ExplorationCombatView(discord.ui.View):
                     ephemeral=True,
                 )
                 return
+            active_dungeon = await get_active_dungeon_run(self.bot.db_pool, interaction.user.id)
+            if active_dungeon is not None:
+                from src.services.dungeon_service import bind_dungeon_message
+                from src.services.player_service import get_player_profile
+                from src.ui.dungeon_view import DungeonView, build_dungeon_room_embed
+
+                player = await get_player_profile(self.bot.db_pool, interaction.user.id)
+                if player is not None:
+                    await interaction.response.send_message(
+                        "That fight has already been resolved. Your dungeon has moved on to the next room.",
+                        ephemeral=True,
+                    )
+                    try:
+                        await interaction.message.edit(
+                            content=f"<@{interaction.user.id}>",
+                            embed=build_dungeon_room_embed(player, active_dungeon),
+                            view=DungeonView(self.bot, active_dungeon),
+                        )
+                        await bind_dungeon_message(
+                            self.bot.db_pool,
+                            user_id=interaction.user.id,
+                            message_id=interaction.message.id,
+                        )
+                    except discord.HTTPException:
+                        pass
+                    return
             await interaction.response.send_message("That fight is already settled.", ephemeral=True)
             return
 

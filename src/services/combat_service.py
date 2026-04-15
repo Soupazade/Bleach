@@ -471,6 +471,14 @@ async def _post_active_combat_message(
         return None
     if combat.source_kind == "exploration":
         bot.exploration_message_refs[combat.user_id] = message.id
+    elif combat.source_kind == "dungeon":
+        from src.services.dungeon_service import bind_dungeon_message
+
+        await bind_dungeon_message(
+            bot.db_pool,
+            user_id=combat.user_id,
+            message_id=message.id,
+        )
     schedule_combat_task(bot, rebound)
     return rebound
 
@@ -484,6 +492,39 @@ async def resolve_and_post_combat_action(
     ability_key: str | None = None,
     old_message: discord.Message | None = None,
 ) -> CombatAdvanceResult:
+    async def _send_dungeon_followup(
+        *,
+        base_message: discord.Message,
+        embed: discord.Embed,
+        view: discord.ui.View | None,
+        user_id: int,
+        bind_run: bool,
+    ) -> None:
+        try:
+            await base_message.edit(
+                content=f"<@{user_id}>",
+                embed=embed,
+                view=view,
+            )
+            return
+        except discord.HTTPException:
+            channel = base_message.channel
+            if not hasattr(channel, "send"):
+                raise
+            sent_message = await channel.send(
+                content=f"<@{user_id}>",
+                embed=embed,
+                view=view,
+            )
+            if bind_run:
+                from src.services.dungeon_service import bind_dungeon_message
+
+                await bind_dungeon_message(
+                    bot.db_pool,
+                    user_id=user_id,
+                    message_id=sent_message.id,
+                )
+
     bot.combat_warning_rounds.pop(user_id, None)
     result = await _advance_combat(
         bot.db_pool,
@@ -528,26 +569,30 @@ async def resolve_and_post_combat_action(
         if old_message is None:
             return result
         if dungeon_result.status == "updated" and dungeon_result.player is not None and dungeon_result.run is not None:
-            await old_message.edit(
-                content=f"<@{result.combat.user_id}>",
+            await _send_dungeon_followup(
+                base_message=old_message,
                 embed=build_dungeon_room_embed(dungeon_result.player, dungeon_result.run),
                 view=DungeonView(bot, dungeon_result.run),
+                user_id=result.combat.user_id,
+                bind_run=True,
             )
             return result
         if dungeon_result.status == "completed" and dungeon_result.player is not None and dungeon_result.progress is not None:
-            await old_message.edit(
-                content=f"<@{result.combat.user_id}>",
+            await _send_dungeon_followup(
+                base_message=old_message,
                 embed=build_dungeon_completion_embed(
                     dungeon_result.player,
                     dungeon_key=result.combat.approach,
                     progress=dungeon_result.progress,
                 ),
                 view=None,
+                user_id=result.combat.user_id,
+                bind_run=False,
             )
             return result
         if dungeon_result.status == "failed" and dungeon_result.player is not None and dungeon_result.progress is not None:
-            await old_message.edit(
-                content=f"<@{result.combat.user_id}>",
+            await _send_dungeon_followup(
+                base_message=old_message,
                 embed=build_dungeon_failure_embed(
                     dungeon_result.player,
                     dungeon_key=result.combat.approach,
@@ -555,6 +600,8 @@ async def resolve_and_post_combat_action(
                     outcome=result.resolution_type or "defeat",
                 ),
                 view=None,
+                user_id=result.combat.user_id,
+                bind_run=False,
             )
             if result.blackout_applied:
                 await _sync_blackout_location_role(bot, result.combat.user_id)

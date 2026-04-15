@@ -54,7 +54,7 @@ def _format_loot(progress: DungeonProgressState) -> str:
 
 def _format_history(progress: DungeonProgressState) -> str:
     if not progress.history:
-        return "The lane is still holding its breath."
+        return "The hideout is still holding its breath."
     return "\n".join(f"- {entry}" for entry in progress.history[-3:])
 
 
@@ -82,7 +82,7 @@ def build_dungeon_room_embed(player: PlayerProfile, run: ActiveDungeonRun) -> di
         inline=True,
     )
     embed.add_field(
-        name="Tunnel Map",
+        name="Hideout Map",
         value=_format_map(run),
         inline=True,
     )
@@ -134,7 +134,7 @@ def build_dungeon_started_embed(player: PlayerProfile, run: ActiveDungeonRun, *,
         inline=False,
     )
     add_explore_divider(embed)
-    embed.set_footer(text="The lane is waiting to see whether you come back out stronger or just quieter.")
+    embed.set_footer(text="The Outskirts are waiting to see whether you come back out stronger or just quieter.")
     return embed
 
 
@@ -149,12 +149,12 @@ def build_dungeon_blocked_embed(title: str, description: str, *, kind: str = "co
 
 
 def build_dungeon_abandoned_embed(run: ActiveDungeonRun | None) -> discord.Embed:
-    dungeon_title = "The Ragpicker Tunnel"
+    dungeon_title = "The Briar Den"
     if run is not None:
         dungeon_title = get_dungeon_definition_for_run(run).title
     embed = discord.Embed(
         title=f"🕳️ {dungeon_title}",
-        description="You pull out of the tunnel before it can ask any more of you. The lane keeps its shadows for now.",
+        description="You pull out of the hideout before it can ask any more of you. The Outskirts keep their shadows for now.",
         color=get_explore_color("flavor"),
     )
     add_explore_divider(embed)
@@ -199,11 +199,11 @@ def build_dungeon_failure_embed(
     outcome: str,
 ) -> discord.Embed:
     dungeon = get_dungeon_definition(dungeon_key)
-    description = "The tunnel throws you back out before the work is done. Rukongai keeps what it can."
+    description = "The hideout throws you back out before the work is done. The Outskirts keep what they can."
     if outcome == "retreated":
-        description = "You pull out before the tunnel can close its hand the rest of the way."
+        description = "You pull out before the hideout can close its hand the rest of the way."
     elif outcome == "defeat":
-        description = "The tunnel wins this round, and you leave it paying for the lesson."
+        description = "The hideout wins this round, and you leave it paying for the lesson."
     embed = discord.Embed(
         title=f"☠️ {dungeon.title}",
         description=description,
@@ -252,12 +252,12 @@ class DungeonView(discord.ui.View):
 
     async def _handle_choice(self, interaction: discord.Interaction, option_slot: int) -> None:
         if interaction.message is None:
-            await interaction.response.send_message("That tunnel run is no longer active.", ephemeral=True)
+            await interaction.response.send_message("That hideout run is no longer active.", ephemeral=True)
             return
 
         run = await get_active_dungeon_run_by_message(self.bot.db_pool, interaction.message.id)
         if run is None:
-            await interaction.response.send_message("That tunnel run has already been settled.", ephemeral=True)
+            await interaction.response.send_message("That hideout run has already been settled.", ephemeral=True)
             try:
                 await interaction.message.edit(view=None)
             except discord.HTTPException:
@@ -331,7 +331,7 @@ class DungeonView(discord.ui.View):
     )
     async def withdraw(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if interaction.message is None:
-            await interaction.response.send_message("That tunnel run is no longer active.", ephemeral=True)
+            await interaction.response.send_message("That hideout run is no longer active.", ephemeral=True)
             return
         result = await abandon_dungeon_run(
             self.bot.db_pool,
