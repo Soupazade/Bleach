@@ -6,6 +6,7 @@ from typing import Literal
 from src.models.combat import ActiveExplorationCombat
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
+from src.models.work import ActiveWork
 
 
 @dataclass(slots=True)
@@ -18,9 +19,11 @@ class StartExplorationResult:
         "active",
         "finished",
         "pending_choice",
+        "active_work",
     ]
     player: PlayerProfile | None = None
     exploration: ActiveExploration | None = None
+    work: ActiveWork | None = None
     rest_minutes: int = 0
     rest_recovery: int = 0
     pending_choice: "ExplorationDecisionPrompt | None" = None

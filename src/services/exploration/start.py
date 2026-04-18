@@ -7,6 +7,7 @@ from asyncpg import Pool
 from src.data.exploration import get_explore_approach
 from src.models.exploration import PendingExplorationChoice
 from src.models.player import PlayerProfile
+from src.models.work import ActiveWork
 from src.services.exploration.choices import build_decision_prompt
 from src.services.exploration.repository import (
     create_active_exploration,
@@ -25,6 +26,8 @@ async def start_exploration(
     channel_id: int,
     approach_key: str,
 ) -> StartExplorationResult:
+    from src.services.work_service import fetch_active_work_record
+
     if pool is None:
         return StartExplorationResult(status="missing_profile")
 
@@ -67,6 +70,14 @@ async def start_exploration(
                     return StartExplorationResult(status="active", player=player, exploration=exploration)
 
                 return StartExplorationResult(status="finished", player=player, exploration=exploration)
+
+            active_work_record = await fetch_active_work_record(connection, user_id, for_update=True)
+            if active_work_record is not None:
+                return StartExplorationResult(
+                    status="active_work",
+                    player=player,
+                    work=ActiveWork.from_record(active_work_record),
+                )
 
             stamina_cost, _ = apply_location_stamina_cost_modifier(
                 player,

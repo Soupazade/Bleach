@@ -743,6 +743,7 @@ async def start_fight_test(
     from src.services.exploration_service import fetch_active_exploration_record, fetch_pending_choice_record
     from src.services.training_service import fetch_active_training_record
     from src.services.travel_service import fetch_active_travel_record
+    from src.services.work_service import fetch_active_work_record
 
     async with pool.acquire() as connection:
         async with connection.transaction():
@@ -762,6 +763,8 @@ async def start_fight_test(
                 return StartFightTestResult(status="busy", player=player, reason="Finish your training first.")
             if await fetch_active_travel_record(connection, user_id, for_update=True) is not None:
                 return StartFightTestResult(status="busy", player=player, reason="Finish your travel first.")
+            if await fetch_active_work_record(connection, user_id, for_update=True) is not None:
+                return StartFightTestResult(status="busy", player=player, reason="Finish your current shift first.")
 
             active_effects = await list_active_player_effects_for_connection(connection, user_id)
             snapshot = build_effective_combat_snapshot(player, active_effects)

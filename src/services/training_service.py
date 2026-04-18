@@ -24,6 +24,7 @@ from src.models.exploration import ActiveExploration
 from src.models.player import PlayerProfile
 from src.models.training import ActiveTraining
 from src.models.travel import ActiveTravel
+from src.models.work import ActiveWork
 from src.services.combat_service import fetch_active_combat_record
 from src.services.exploration_service import (
     fetch_active_exploration_record,
@@ -85,6 +86,7 @@ class StartTrainingResult:
         "pending_choice",
         "active_combat",
         "active_travel",
+        "active_work",
         "invalid_selection",
         "wrong_location",
         "wounded",
@@ -93,6 +95,7 @@ class StartTrainingResult:
     training: ActiveTraining | None = None
     exploration: ActiveExploration | None = None
     travel: ActiveTravel | None = None
+    work: ActiveWork | None = None
     stamina_cost: int = 0
     base_stamina_cost: int = 0
 
@@ -274,6 +277,8 @@ async def start_training(
     stat_target: str,
     duration_minutes: int,
 ) -> StartTrainingResult:
+    from src.services.work_service import fetch_active_work_record
+
     if pool is None:
         return StartTrainingResult(status="missing_profile")
 
@@ -328,6 +333,14 @@ async def start_training(
                 if training.end_time > now:
                     return StartTrainingResult(status="active_training", player=player, training=training)
                 return StartTrainingResult(status="finished", player=player, training=training)
+
+            work_record = await fetch_active_work_record(connection, user_id, for_update=True)
+            if work_record is not None:
+                return StartTrainingResult(
+                    status="active_work",
+                    player=player,
+                    work=ActiveWork.from_record(work_record),
+                )
 
             duration = get_training_duration(duration_minutes)
             stamina_cost, _ = _apply_training_stamina_cost(player, duration.stamina_cost)

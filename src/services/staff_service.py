@@ -5,13 +5,24 @@ from datetime import datetime, timezone
 
 from asyncpg import Pool
 
+from src.services.combat.repository import (
+    append_fight_log_event,
+    delete_active_combat_by_fight,
+    fetch_active_combat_record_by_fight,
+    fetch_fight_log_by_fight_id,
+    finalize_fight_log,
+    session_from_record,
+)
 from src.data.locations import get_location_definition
+from src.data.npcs import get_npc_definition
+from src.data.quests import get_quest_definition
 from src.data.traits import get_trait_definition
 from src.models.combat import ActiveExplorationCombat
 from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
 from src.models.training import ActiveTraining
 from src.models.travel import ActiveTravel
+from src.models.work import ActiveWork
 from src.services.combat_service import (
     delete_active_exploration_combat,
     fetch_active_combat_record,
@@ -25,10 +36,16 @@ from src.services.exploration_service import (
     get_active_exploration,
     get_pending_exploration_choice,
 )
+from src.services.npc_service import fetch_player_npc_progress_record
 from src.services.travel_service import (
     delete_active_travel,
     fetch_active_travel_record,
     get_active_travel,
+)
+from src.services.work_service import (
+    delete_active_work,
+    fetch_active_work_record,
+    get_active_work,
 )
 from src.services.training_service import (
     delete_active_training,
@@ -46,6 +63,7 @@ from src.services.player_service import (
     get_or_sync_player_record,
     update_player_record,
 )
+from src.services.quest_service import fetch_player_quest_record
 
 
 @dataclass(slots=True)
@@ -56,6 +74,7 @@ class CooldownResetResult:
     cleared_combat: bool
     cleared_training: bool
     cleared_travel: bool
+    cleared_work: bool
     cleared_resting: bool
 
 
@@ -67,10 +86,37 @@ class PlayerDebugState:
     active_combat: ActiveExplorationCombat | None
     active_training: ActiveTraining | None
     active_travel: ActiveTravel | None
+    active_work: ActiveWork | None
     rest_minutes: int
     projected_rest_stamina_recovery: int
     projected_rest_hp_recovery: int
     projected_rest_mana_recovery: int
+
+
+@dataclass(slots=True)
+class FightTerminationResult:
+    status: str
+    combat: ActiveExplorationCombat | None = None
+    final_outcome: str | None = None
+
+
+@dataclass(slots=True)
+class EffectClearResult:
+    status: str
+    cleared_count: int = 0
+
+
+@dataclass(slots=True)
+class QuestResetResult:
+    status: str
+    previous_status: str | None = None
+
+
+@dataclass(slots=True)
+class NpcResetResult:
+    status: str
+    cleared_progress: bool = False
+    cleared_pending_choice: bool = False
 
 
 VALID_STAT_FIELDS = {"power", "defense", "speed", "reiatsu"}
@@ -324,6 +370,11 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
             if cleared_travel:
                 await delete_active_travel(connection, user_id)
 
+            work_record = await fetch_active_work_record(connection, user_id, for_update=True)
+            cleared_work = work_record is not None
+            if cleared_work:
+                await delete_active_work(connection, user_id)
+
             cleared_resting = bool(record["is_resting"])
             updated_record = record
             if cleared_resting:
@@ -347,6 +398,7 @@ async def reset_player_action_timers(pool: Pool | None, user_id: int) -> Cooldow
         cleared_combat=cleared_combat,
         cleared_training=cleared_training,
         cleared_travel=cleared_travel,
+        cleared_work=cleared_work,
         cleared_resting=cleared_resting,
     )
 
@@ -364,6 +416,7 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
     active_combat = await get_active_exploration_combat(pool, user_id)
     active_training = await get_active_training(pool, user_id)
     active_travel = await get_active_travel(pool, user_id)
+    active_work = await get_active_work(pool, user_id)
     rest_status = get_rest_status(player)
     return PlayerDebugState(
         player=player,
@@ -372,8 +425,176 @@ async def get_player_debug_state(pool: Pool | None, user_id: int) -> PlayerDebug
         active_combat=active_combat,
         active_training=active_training,
         active_travel=active_travel,
+        active_work=active_work,
         rest_minutes=rest_status.resting_minutes,
         projected_rest_stamina_recovery=rest_status.recovered_stamina,
         projected_rest_hp_recovery=rest_status.recovered_hp,
         projected_rest_mana_recovery=rest_status.recovered_mana,
     )
+
+
+async def end_fight_without_victor(
+    pool: Pool | None,
+    fight_id: int,
+    *,
+    closed_by: str,
+) -> FightTerminationResult:
+    if pool is None:
+        return FightTerminationResult(status="missing")
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            combat_record = await fetch_active_combat_record_by_fight(connection, fight_id, for_update=True)
+            if combat_record is None:
+                fight_log = await fetch_fight_log_by_fight_id(connection, fight_id)
+                if fight_log is None:
+                    return FightTerminationResult(status="missing")
+                return FightTerminationResult(
+                    status="already_closed",
+                    final_outcome=fight_log.outcome,
+                )
+
+            combat = session_from_record(combat_record)
+            await append_fight_log_event(
+                connection,
+                fight_log_id=combat.fight_log_id,
+                detail_text=(
+                    "Fight Closed | outcome=no_victor\n"
+                    f"Moderator | {closed_by}\n"
+                    "Resolution | Staff ended the fight without declaring a winner."
+                ),
+                payload={
+                    "event": "staff_end_fight",
+                    "fight_id": combat.fight_id,
+                    "fight_log_id": combat.fight_log_id,
+                    "closed_by": closed_by,
+                    "outcome": "no_victor",
+                },
+            )
+            await finalize_fight_log(
+                connection,
+                fight_log_id=combat.fight_log_id,
+                outcome="no_victor",
+            )
+            await delete_active_combat_by_fight(connection, fight_id)
+            return FightTerminationResult(
+                status="ended",
+                combat=combat,
+                final_outcome="no_victor",
+            )
+
+
+async def clear_player_effects(pool: Pool | None, user_id: int) -> EffectClearResult:
+    if pool is None:
+        return EffectClearResult(status="missing")
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return EffectClearResult(status="missing")
+
+            result = await connection.execute(
+                """
+                DELETE FROM player_effects
+                WHERE user_id = $1
+                """,
+                user_id,
+            )
+
+    cleared_count = int(result.rsplit(" ", maxsplit=1)[-1])
+    return EffectClearResult(status="cleared", cleared_count=cleared_count)
+
+
+async def staff_reset_player_quest(
+    pool: Pool | None,
+    user_id: int,
+    quest_key: str,
+) -> QuestResetResult:
+    if pool is None:
+        return QuestResetResult(status="missing_profile")
+
+    try:
+        get_quest_definition(quest_key)
+    except ValueError:
+        return QuestResetResult(status="invalid_quest")
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return QuestResetResult(status="missing_profile")
+
+            existing_record = await fetch_player_quest_record(
+                connection,
+                user_id,
+                quest_key,
+                for_update=True,
+            )
+            if existing_record is None:
+                return QuestResetResult(status="not_found")
+
+            previous_status = str(existing_record["status"])
+            await connection.execute(
+                """
+                DELETE FROM player_quests
+                WHERE user_id = $1
+                  AND quest_key = $2
+                """,
+                user_id,
+                quest_key,
+            )
+            return QuestResetResult(status="reset", previous_status=previous_status)
+
+
+async def staff_reset_player_npc(
+    pool: Pool | None,
+    user_id: int,
+    npc_id: str,
+) -> NpcResetResult:
+    if pool is None:
+        return NpcResetResult(status="missing_profile")
+
+    try:
+        get_npc_definition(npc_id)
+    except ValueError:
+        return NpcResetResult(status="invalid_npc")
+
+    async with pool.acquire() as connection:
+        async with connection.transaction():
+            sync_result = await get_or_sync_player_record(connection, user_id, for_update=True)
+            if sync_result is None:
+                return NpcResetResult(status="missing_profile")
+
+            progress_record = await fetch_player_npc_progress_record(
+                connection,
+                user_id,
+                npc_id,
+                for_update=True,
+            )
+            cleared_progress = progress_record is not None
+            if cleared_progress:
+                await connection.execute(
+                    """
+                    DELETE FROM player_npc_progress
+                    WHERE user_id = $1
+                      AND npc_id = $2
+                    """,
+                    user_id,
+                    npc_id,
+                )
+
+            pending_choice_record = await fetch_pending_choice_record(connection, user_id, for_update=True)
+            cleared_pending_choice = False
+            if pending_choice_record is not None and pending_choice_record["npc_id"] == npc_id:
+                await delete_pending_choice(connection, user_id)
+                cleared_pending_choice = True
+
+            if not cleared_progress and not cleared_pending_choice:
+                return NpcResetResult(status="not_found")
+
+            return NpcResetResult(
+                status="reset",
+                cleared_progress=cleared_progress,
+                cleared_pending_choice=cleared_pending_choice,
+            )

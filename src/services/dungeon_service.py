@@ -362,6 +362,7 @@ def _busy_reason_from_records(
     pending_choice: Record | None,
     active_training: Record | None,
     active_travel: Record | None,
+    active_work: Record | None,
 ) -> str | None:
     if pending_choice is not None:
         return "A street decision is still waiting on you."
@@ -371,6 +372,8 @@ def _busy_reason_from_records(
         return "Finish your training first."
     if active_travel is not None:
         return "Finish your travel first."
+    if active_work is not None:
+        return "Finish your current shift first."
     return None
 
 
@@ -380,6 +383,8 @@ async def start_first_dungeon(
     user_id: int,
     channel_id: int,
 ) -> StartDungeonResult:
+    from src.services.work_service import fetch_active_work_record
+
     if pool is None:
         return StartDungeonResult(status="missing_profile")
 
@@ -413,11 +418,13 @@ async def start_first_dungeon(
             pending_choice = await fetch_pending_choice_record(connection, user_id, for_update=True)
             active_training = await fetch_active_training_record(connection, user_id, for_update=True)
             active_travel = await fetch_active_travel_record(connection, user_id, for_update=True)
+            active_work = await fetch_active_work_record(connection, user_id, for_update=True)
             busy_reason = _busy_reason_from_records(
                 active_exploration=active_exploration,
                 pending_choice=pending_choice,
                 active_training=active_training,
                 active_travel=active_travel,
+                active_work=active_work,
             )
             if busy_reason is not None:
                 return StartDungeonResult(status="busy", player=player, reason=busy_reason)

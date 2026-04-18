@@ -408,6 +408,29 @@ class TravelView(discord.ui.View):
             )
             return
 
+        if result.status == "active_work" and result.player is not None and result.work is not None:
+            from src.services.work_service import resolve_and_post_work
+            from src.ui.work_view import build_work_active_embed, build_work_resolution_posted_embed
+
+            self.stop()
+            if result.work.end_time > discord.utils.utcnow():
+                await interaction.response.edit_message(
+                    embed=build_work_active_embed(result.player, result.work),
+                    view=None,
+                )
+                return
+
+            resolution = await resolve_and_post_work(self.bot, interaction.user.id)
+            await interaction.response.edit_message(
+                embed=build_work_resolution_posted_embed() if resolution is not None else build_travel_blocked_embed(
+                    "Work Resolution Failed",
+                    "That shift should have been over, but I could not settle it cleanly just yet.",
+                    kind="combat",
+                ),
+                view=None,
+            )
+            return
+
         if result.status == "resting" and result.player is not None:
             rest_status = get_rest_status(result.player)
             self.stop()

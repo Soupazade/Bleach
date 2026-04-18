@@ -187,6 +187,13 @@ async def get_active_stamina_activity_window(
                 end_time
             FROM active_trainings
             WHERE user_id = $1
+            UNION ALL
+            SELECT
+                'working' AS activity_type,
+                start_time,
+                end_time
+            FROM active_works
+            WHERE user_id = $1
         ) AS active_windows
         ORDER BY end_time DESC
         LIMIT 1

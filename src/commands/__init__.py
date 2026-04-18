@@ -13,6 +13,7 @@ from src.commands.start import register_start_command
 from src.commands.train import register_train_command
 from src.commands.travel import register_travel_command
 from src.commands.use import register_use_command
+from src.commands.work import register_work_command
 
 
 def register_commands(bot) -> None:
@@ -28,6 +29,7 @@ def register_commands(bot) -> None:
     register_explore_command(bot)
     register_train_command(bot)
     register_travel_command(bot)
+    register_work_command(bot)
     register_rest_command(bot)
     register_staff_commands(bot)
     register_fightlog_command(bot)

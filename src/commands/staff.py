@@ -10,20 +10,28 @@ from discord import app_commands
 from src.commands.checks import require_staff_rank
 from src.data.exploration import get_explore_approach
 from src.data.locations import LOCATIONS, get_location_definition
+from src.data.npcs import RECURRING_NPCS
+from src.data.quests import QUEST_DEFINITIONS
 from src.data.traits import SOUL_TRAITS, get_trait_definition
+from src.services.dungeon_service import get_active_dungeon_run
 from src.services.exploration_service import get_exploration_remaining_time, resolve_and_post_exploration
 from src.services.formulas import get_xp_required_for_level
 from src.services.location_service import format_location_room_reference
 from src.services.role_service import remove_player_roles, sync_member_location_role
 from src.services.training_service import get_training_remaining_time
 from src.services.travel_service import get_travel_remaining_time
+from src.services.work_service import get_work_remaining_time
 from src.services.staff_service import (
+    clear_player_effects,
     delete_player_profile,
+    end_fight_without_victor,
     give_player_xp,
     get_player_debug_state,
     reset_player_action_timers,
     set_player_level,
     set_player_location,
+    staff_reset_player_npc,
+    staff_reset_player_quest,
     set_player_stat,
     set_player_stamina,
     set_player_trait,
@@ -55,6 +63,16 @@ FORCE_RESOLVE_CHOICES = [
     app_commands.Choice(name="Explore", value="explore"),
 ]
 
+QUEST_CHOICES = [
+    app_commands.Choice(name=quest.title, value=quest.key)
+    for quest in QUEST_DEFINITIONS.values()
+]
+
+NPC_CHOICES = [
+    app_commands.Choice(name=npc.name, value=npc.id)
+    for npc in RECURRING_NPCS.values()
+]
+
 
 def _cancel_player_exploration_task(bot: "BleachBot", user_id: int) -> bool:
     task = bot.exploration_tasks.pop(user_id, None)
@@ -81,6 +99,65 @@ def _cancel_player_training_task(bot: "BleachBot", user_id: int) -> bool:
 
     task.cancel()
     return True
+
+
+def _cancel_player_work_task(bot: "BleachBot", user_id: int) -> bool:
+    task = bot.work_tasks.pop(user_id, None)
+    if task is None:
+        return False
+
+    task.cancel()
+    return True
+
+
+def _cancel_player_combat_task(bot: "BleachBot", user_id: int) -> bool:
+    task = bot.combat_tasks.pop(user_id, None)
+    if task is None:
+        return False
+
+    task.cancel()
+    return True
+
+
+def _clear_player_runtime_refs(bot: "BleachBot", user_id: int) -> None:
+    bot.exploration_message_refs.pop(user_id, None)
+    bot.combat_warning_rounds.pop(user_id, None)
+    bot.recent_combat_resolutions.pop(user_id, None)
+
+
+async def _close_fight_message(
+    bot: "BleachBot",
+    *,
+    combat,
+    embed: discord.Embed,
+) -> bool:
+    if combat.message_id is None:
+        return False
+
+    channel = bot.get_channel(combat.channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(combat.channel_id)
+        except discord.HTTPException:
+            return False
+
+    if not hasattr(channel, "fetch_message"):
+        return False
+
+    try:
+        message = await channel.fetch_message(combat.message_id)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return False
+
+    try:
+        await message.edit(
+            content=f"<@{combat.user_id}>",
+            embed=embed,
+            view=None,
+        )
+        return True
+    except discord.HTTPException:
+        return False
 
 
 def _can_bulk_delete(message: discord.Message) -> bool:
@@ -178,6 +255,7 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
     active_combat = debug_state.active_combat
     active_training = debug_state.active_training
     active_travel = debug_state.active_travel
+    active_work = debug_state.active_work
 
     embed = discord.Embed(
         title="Player State",
@@ -299,6 +377,19 @@ def build_player_state_embed(bot: "BleachBot", player: discord.Member, debug_sta
             inline=False,
         )
 
+    if active_work is not None:
+        embed.add_field(
+            name="Work",
+            value=(
+                f"Job: **{active_work.work_key.replace('_', ' ').title()}**\n"
+                f"Channel: <#{active_work.channel_id}>\n"
+                f"End: **{discord.utils.format_dt(active_work.end_time, 'R')}**\n"
+                f"Remaining: **{get_work_remaining_time(active_work)}**\n"
+                f"Task Tracked: **{'Yes' if active_work.user_id in bot.work_tasks else 'No'}**"
+            ),
+            inline=False,
+        )
+
     if active_combat is not None:
         embed.add_field(
             name="Combat",
@@ -361,7 +452,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
             )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @bot.tree.command(name="resetplayer", description="Delete a player's profile so they must use /start again.")
+    @bot.tree.command(name="resetplayer", description="Completely wipe a player's profile so they must use /start again.")
     @app_commands.guild_only()
     @require_staff_rank("super_admin")
     async def resetplayer(interaction: discord.Interaction, player: discord.Member) -> None:
@@ -369,9 +460,14 @@ def register_staff_commands(bot: "BleachBot") -> None:
             await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
             return
 
+        debug_state = await get_player_debug_state(bot.db_pool, player.id)
+        active_dungeon_run = await get_active_dungeon_run(bot.db_pool, player.id)
         cancelled_task = _cancel_player_exploration_task(bot, player.id)
         cancelled_training_task = _cancel_player_training_task(bot, player.id)
         cancelled_travel_task = _cancel_player_travel_task(bot, player.id)
+        cancelled_work_task = _cancel_player_work_task(bot, player.id)
+        cancelled_combat_task = _cancel_player_combat_task(bot, player.id)
+        _clear_player_runtime_refs(bot, player.id)
         deleted_profile = await delete_player_profile(bot.db_pool, player.id)
         role_summary, role_warning = await remove_player_roles(
             player,
@@ -401,6 +497,25 @@ def register_staff_commands(bot: "BleachBot") -> None:
         embed.add_field(
             name="Training Task Cancelled",
             value="Yes" if cancelled_training_task else "No active training task",
+            inline=True,
+        )
+        embed.add_field(
+            name="Work Task Cancelled",
+            value="Yes" if cancelled_work_task else "No active work task",
+            inline=True,
+        )
+        embed.add_field(
+            name="Combat Cleared",
+            value=(
+                "Yes"
+                if cancelled_combat_task or (debug_state is not None and debug_state.active_combat is not None)
+                else "No active combat"
+            ),
+            inline=True,
+        )
+        embed.add_field(
+            name="Dungeon Cleared",
+            value="Yes" if active_dungeon_run is not None else "No active dungeon run",
             inline=True,
         )
         if role_summary is not None:
@@ -611,6 +726,8 @@ def register_staff_commands(bot: "BleachBot") -> None:
         cancelled_task = _cancel_player_exploration_task(bot, player.id)
         cancelled_training_task = _cancel_player_training_task(bot, player.id)
         cancelled_travel_task = _cancel_player_travel_task(bot, player.id)
+        cancelled_work_task = _cancel_player_work_task(bot, player.id)
+        cancelled_combat_task = _cancel_player_combat_task(bot, player.id)
         result = await reset_player_action_timers(bot.db_pool, player.id)
         if result is None:
             await interaction.response.send_message(
@@ -618,6 +735,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
                 ephemeral=True,
             )
             return
+        _clear_player_runtime_refs(bot, player.id)
 
         embed = discord.Embed(
             title="Timed Actions Reset",
@@ -636,7 +754,7 @@ def register_staff_commands(bot: "BleachBot") -> None:
         )
         embed.add_field(
             name="Combat Cleared",
-            value="Yes" if result.cleared_combat else "No",
+            value="Yes" if result.cleared_combat or cancelled_combat_task else "No",
             inline=True,
         )
         embed.add_field(
@@ -650,11 +768,129 @@ def register_staff_commands(bot: "BleachBot") -> None:
             inline=True,
         )
         embed.add_field(
+            name="Work Cleared",
+            value="Yes" if result.cleared_work or cancelled_work_task else "No",
+            inline=True,
+        )
+        embed.add_field(
             name="Rest Cleared",
             value="Yes" if result.cleared_resting else "No",
             inline=True,
         )
         embed.add_field(name="Current Stamina", value=f"**{result.player.stamina_current}/{result.player.stamina_max}**", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="cleareffects", description="Remove all active effects from a player.")
+    @app_commands.guild_only()
+    @require_staff_rank("admin")
+    async def cleareffects(interaction: discord.Interaction, player: discord.Member) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        result = await clear_player_effects(bot.db_pool, player.id)
+        if result.status == "missing":
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="Effects Cleared",
+            description=f"All active effects have been removed from {player.mention}.",
+            color=discord.Color.dark_teal(),
+        )
+        embed.add_field(name="Effects Removed", value=f"**{result.cleared_count}**", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="resetquest", description="Reset one quest record so a player can start it again.")
+    @app_commands.guild_only()
+    @require_staff_rank("admin")
+    @app_commands.choices(quest=QUEST_CHOICES)
+    async def resetquest(
+        interaction: discord.Interaction,
+        player: discord.Member,
+        quest: app_commands.Choice[str],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        result = await staff_reset_player_quest(bot.db_pool, player.id, quest.value)
+        if result.status == "missing_profile":
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+        if result.status == "invalid_quest":
+            await interaction.response.send_message("That quest is not recognized.", ephemeral=True)
+            return
+        if result.status == "not_found":
+            await interaction.response.send_message(
+                f"{player.mention} does not have a saved record for **{quest.name}**.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="Quest Reset",
+            description=f"{player.mention}'s quest record has been cleared.",
+            color=discord.Color.dark_gold(),
+        )
+        embed.add_field(name="Quest", value=f"**{quest.name}**", inline=True)
+        if result.previous_status is not None:
+            embed.add_field(name="Previous Status", value=f"**{result.previous_status}**", inline=True)
+        embed.add_field(
+            name="Next Step",
+            value="The player can accept or re-enter the quest flow again.",
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="resetnpc", description="Reset one recurring NPC chain for a player.")
+    @app_commands.guild_only()
+    @require_staff_rank("admin")
+    @app_commands.choices(npc=NPC_CHOICES)
+    async def resetnpc(
+        interaction: discord.Interaction,
+        player: discord.Member,
+        npc: app_commands.Choice[str],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        result = await staff_reset_player_npc(bot.db_pool, player.id, npc.value)
+        if result.status == "missing_profile":
+            await interaction.response.send_message(
+                f"{player.mention} does not have a profile yet.",
+                ephemeral=True,
+            )
+            return
+        if result.status == "invalid_npc":
+            await interaction.response.send_message("That NPC chain is not recognized.", ephemeral=True)
+            return
+        if result.status == "not_found":
+            await interaction.response.send_message(
+                f"{player.mention} has no saved progress for **{npc.name}**.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="NPC Progress Reset",
+            description=f"{player.mention}'s recurring NPC chain has been reset.",
+            color=discord.Color.dark_green(),
+        )
+        embed.add_field(name="NPC", value=f"**{npc.name}**", inline=True)
+        embed.add_field(name="Progress Cleared", value="Yes" if result.cleared_progress else "No", inline=True)
+        embed.add_field(
+            name="Pending Encounter Cleared",
+            value="Yes" if result.cleared_pending_choice else "No",
+            inline=True,
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="setlocation", description="Move a player to a new location and sync their location role.")
@@ -741,6 +977,91 @@ def register_staff_commands(bot: "BleachBot") -> None:
             embed.add_field(name="Outcome", value="**Street Decision Posted**", inline=True)
             embed.add_field(name="Step", value=f"**{resolution.prompt.step_number}/{resolution.prompt.total_steps}**", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="endfight", description="End an active fight by fight ID with no victor.")
+    @app_commands.guild_only()
+    @require_staff_rank("mod")
+    async def endfight(
+        interaction: discord.Interaction,
+        fight_id: app_commands.Range[int, 1],
+    ) -> None:
+        if bot.db_pool is None:
+            await interaction.response.send_message("Database is unavailable right now.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        result = await end_fight_without_victor(
+            bot.db_pool,
+            fight_id,
+            closed_by=str(interaction.user),
+        )
+
+        if result.status == "missing":
+            await interaction.followup.send(
+                f"No fight with ID `{fight_id}` was found.",
+                ephemeral=True,
+            )
+            return
+
+        if result.status == "already_closed":
+            outcome_text = result.final_outcome or "unknown"
+            await interaction.followup.send(
+                f"Fight `{fight_id}` is already closed with outcome `{outcome_text}`.",
+                ephemeral=True,
+            )
+            return
+
+        if result.combat is None:
+            await interaction.followup.send(
+                "I could not close that fight cleanly.",
+                ephemeral=True,
+            )
+            return
+
+        cancelled_combat_task = _cancel_player_combat_task(bot, result.combat.user_id)
+        _clear_player_runtime_refs(bot, result.combat.user_id)
+
+        closed_embed = discord.Embed(
+            title="Fight Closed",
+            description="This fight was ended by staff with **no victor**.",
+            color=discord.Color.dark_orange(),
+        )
+        closed_embed.add_field(name="Fight ID", value=f"**{result.combat.fight_id}**", inline=True)
+        closed_embed.add_field(name="Player", value=f"<@{result.combat.user_id}>", inline=True)
+        closed_embed.add_field(name="Source", value=f"**{result.combat.source_kind.title()}**", inline=True)
+        closed_embed.add_field(name="Encounter", value=f"**{result.combat.encounter_title}**", inline=False)
+        closed_embed.set_footer(text=f"Closed by {interaction.user}")
+
+        message_closed = await _close_fight_message(
+            bot,
+            combat=result.combat,
+            embed=closed_embed,
+        )
+
+        embed = discord.Embed(
+            title="Fight Ended",
+            description=f"Fight `{result.combat.fight_id}` has been ended with **no victor**.",
+            color=discord.Color.orange(),
+        )
+        embed.add_field(name="Player", value=f"<@{result.combat.user_id}>", inline=True)
+        embed.add_field(name="Log Outcome", value=f"**{result.final_outcome or 'no_victor'}**", inline=True)
+        embed.add_field(
+            name="Combat Task Cancelled",
+            value="Yes" if cancelled_combat_task else "No tracked task",
+            inline=True,
+        )
+        embed.add_field(
+            name="Message Closed",
+            value="Yes" if message_closed else "No message update",
+            inline=True,
+        )
+        if result.combat.source_kind == "dungeon":
+            embed.add_field(
+                name="Dungeon Follow-up",
+                value="The dungeon run remains open. The player can use **/dungeon** to reopen the room.",
+                inline=False,
+            )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="playerstate", description="Show a compact admin debug sheet for a player.")
     @app_commands.guild_only()

@@ -19,6 +19,7 @@ from src.services.travel_service import (
     get_active_travel,
     resolve_and_post_travel,
 )
+from src.services.work_service import get_active_work, resolve_and_post_work
 from src.ui.exploration_combat_view import build_active_combat_embed
 from src.ui.train_view import build_training_active_embed, build_training_resolution_posted_embed
 from src.ui.travel_view import (
@@ -31,6 +32,7 @@ from src.ui.travel_view import (
     build_travel_resting_embed,
     build_travel_wrong_location_embed,
 )
+from src.ui.work_view import build_work_active_embed, build_work_resolution_posted_embed
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -90,8 +92,32 @@ def register_travel_command(bot: "BleachBot") -> None:
             )
             return
 
-        active_exploration = await get_active_exploration(bot.db_pool, interaction.user.id)
         now = datetime.now(timezone.utc)
+        active_work = await get_active_work(bot.db_pool, interaction.user.id)
+        if active_work is not None:
+            if active_work.end_time > now:
+                await interaction.response.send_message(
+                    embed=build_work_active_embed(player, active_work),
+                )
+                return
+
+            resolution = await resolve_and_post_work(bot, interaction.user.id)
+            if resolution is None:
+                await interaction.response.send_message(
+                    embed=build_travel_blocked_embed(
+                        "Work Resolution Failed",
+                        "That shift should have been over, but I could not settle it cleanly just yet.",
+                        kind="combat",
+                    ),
+                )
+                return
+
+            await interaction.response.send_message(
+                embed=build_work_resolution_posted_embed(),
+            )
+            return
+
+        active_exploration = await get_active_exploration(bot.db_pool, interaction.user.id)
         if active_exploration is not None:
             if active_exploration.end_time > now:
                 await interaction.response.send_message(

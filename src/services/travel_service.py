@@ -15,6 +15,7 @@ from src.models.exploration import ActiveExploration, PendingExplorationChoice
 from src.models.player import PlayerProfile
 from src.models.quest import QuestProgressUpdate
 from src.models.travel import ActiveTravel
+from src.models.work import ActiveWork
 from src.services.combat_service import fetch_active_combat_record
 from src.services.exploration_service import (
     fetch_active_exploration_record,
@@ -59,12 +60,14 @@ class StartTravelResult:
         "active_exploration",
         "pending_choice",
         "active_combat",
+        "active_work",
         "invalid_route",
     ]
     player: PlayerProfile | None = None
     travel: ActiveTravel | None = None
     exploration: ActiveExploration | None = None
     pending_choice: PendingExplorationChoice | None = None
+    work: ActiveWork | None = None
     stamina_cost: int = 0
     base_stamina_cost: int = 0
 
@@ -205,6 +208,8 @@ async def start_travel(
     channel_id: int,
     destination_location: str,
 ) -> StartTravelResult:
+    from src.services.work_service import fetch_active_work_record
+
     if pool is None:
         return StartTravelResult(status="missing_profile")
 
@@ -243,6 +248,14 @@ async def start_travel(
                 if travel.end_time > now:
                     return StartTravelResult(status="active_travel", player=player, travel=travel)
                 return StartTravelResult(status="finished", player=player, travel=travel)
+
+            work_record = await fetch_active_work_record(connection, user_id, for_update=True)
+            if work_record is not None:
+                return StartTravelResult(
+                    status="active_work",
+                    player=player,
+                    work=ActiveWork.from_record(work_record),
+                )
 
             try:
                 route = get_travel_route(player.location, destination_location)

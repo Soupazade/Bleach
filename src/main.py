@@ -7,12 +7,14 @@ from discord import app_commands
 from dotenv import load_dotenv
 
 from src.commands import register_commands
+from src.commands.checks import is_staff_command, is_staff_member
 from src.database import create_pool, ensure_schema
 from src.services.combat_service import get_active_exploration_combat, restore_combat_tasks
 from src.ui.dungeon_view import DungeonView
 from src.services.exploration_service import restore_exploration_tasks, start_exploration_watchdog
 from src.services.training_service import restore_training_tasks
 from src.services.travel_service import restore_travel_tasks
+from src.services.work_service import restore_work_tasks
 from src.ui.exploration_combat_view import ExplorationCombatView
 from src.ui.exploration_combat_view import build_active_combat_embed
 from src.ui.exploration_choice_view import ExplorationChoiceView
@@ -38,6 +40,9 @@ class BleachCommandTree(app_commands.CommandTree):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         client = self.client
         if not isinstance(client, BleachBot) or client.db_pool is None:
+            return True
+
+        if is_staff_command(interaction.command) and is_staff_member(interaction.user):
             return True
 
         active_combat = await get_active_exploration_combat(client.db_pool, interaction.user.id)
@@ -71,6 +76,7 @@ class BleachBot(discord.Client):
         self.combat_warning_rounds: dict[int, int] = {}
         self.training_tasks: dict[int, asyncio.Task] = {}
         self.travel_tasks: dict[int, asyncio.Task] = {}
+        self.work_tasks: dict[int, asyncio.Task] = {}
         self.recent_combat_resolutions: dict[int, object] = {}
         register_commands(self)
 
@@ -95,6 +101,7 @@ class BleachBot(discord.Client):
         await restore_combat_tasks(self)
         await restore_training_tasks(self)
         await restore_travel_tasks(self)
+        await restore_work_tasks(self)
 
         if self.guild_id is not None:
             guild = discord.Object(id=self.guild_id)
@@ -122,6 +129,8 @@ class BleachBot(discord.Client):
             task.cancel()
         for task in self.travel_tasks.values():
             task.cancel()
+        for task in self.work_tasks.values():
+            task.cancel()
 
         self.exploration_tasks.clear()
         self.exploration_watchdog_task = None
@@ -130,6 +139,7 @@ class BleachBot(discord.Client):
         self.combat_warning_rounds.clear()
         self.training_tasks.clear()
         self.travel_tasks.clear()
+        self.work_tasks.clear()
         if self.db_pool is not None:
             await self.db_pool.close()
         await super().close()

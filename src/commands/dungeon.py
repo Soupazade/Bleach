@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import discord
@@ -9,6 +10,7 @@ from src.services.combat_service import get_active_exploration_combat
 from src.services.dungeon_service import bind_dungeon_message, get_active_dungeon_run, start_first_dungeon
 from src.services.location_service import channel_matches_location
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
+from src.services.work_service import get_active_work, resolve_and_post_work
 from src.ui.dungeon_view import (
     DungeonView,
     build_dungeon_blocked_embed,
@@ -16,6 +18,7 @@ from src.ui.dungeon_view import (
     build_dungeon_started_embed,
 )
 from src.ui.exploration_combat_view import build_active_combat_embed
+from src.ui.work_view import build_work_active_embed, build_work_resolution_posted_embed
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -86,6 +89,25 @@ def register_dungeon_command(bot: "BleachBot") -> None:
         if active_combat is not None:
             await interaction.response.send_message(
                 embed=build_active_combat_embed(active_combat, interaction.user),
+                ephemeral=True,
+            )
+            return
+
+        active_work = await get_active_work(bot.db_pool, interaction.user.id)
+        if active_work is not None:
+            if active_work.end_time > datetime.now(timezone.utc):
+                await interaction.response.send_message(
+                    embed=build_work_active_embed(player, active_work),
+                    ephemeral=True,
+                )
+                return
+
+            resolution = await resolve_and_post_work(bot, interaction.user.id)
+            await interaction.response.send_message(
+                embed=build_work_resolution_posted_embed() if resolution is not None else build_dungeon_blocked_embed(
+                    "Work Resolution Failed",
+                    "That shift should have been over, but I could not settle it cleanly just yet.",
+                ),
                 ephemeral=True,
             )
             return

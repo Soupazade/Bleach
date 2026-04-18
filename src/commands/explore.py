@@ -17,6 +17,7 @@ from src.services.exploration_service import (
 from src.services.player_service import build_resting_block_message, get_player_profile, get_rest_status
 from src.services.training_service import get_active_training, resolve_and_post_training
 from src.services.travel_service import get_active_travel, resolve_and_post_travel
+from src.services.work_service import get_active_work, resolve_and_post_work
 from src.ui.explore_view import (
     ExploreView,
     build_explore_active_embed,
@@ -34,6 +35,7 @@ from src.ui.travel_view import (
     build_travel_blocked_embed,
     build_travel_resolution_posted_embed,
 )
+from src.ui.work_view import build_work_active_embed, build_work_resolution_posted_embed
 
 if TYPE_CHECKING:
     from src.main import BleachBot
@@ -95,6 +97,30 @@ def register_explore_command(bot: "BleachBot") -> None:
             return
 
         now = datetime.now(timezone.utc)
+        active_work = await get_active_work(bot.db_pool, interaction.user.id)
+        if active_work is not None:
+            if active_work.end_time > now:
+                await interaction.response.send_message(
+                    embed=build_work_active_embed(player, active_work),
+                )
+                return
+
+            resolution = await resolve_and_post_work(bot, interaction.user.id)
+            if resolution is None:
+                await interaction.response.send_message(
+                    embed=build_travel_blocked_embed(
+                        "Work Is Still Tangled",
+                        "That shift should have been over by now, but I could not settle it cleanly just yet.",
+                        kind="combat",
+                    ),
+                )
+                return
+
+            await interaction.response.send_message(
+                embed=build_work_resolution_posted_embed(),
+            )
+            return
+
         active_training = await get_active_training(bot.db_pool, interaction.user.id)
         if active_training is not None:
             if active_training.end_time > now:

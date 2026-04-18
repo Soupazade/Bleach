@@ -492,6 +492,29 @@ class ExploreView(discord.ui.View):
             )
             return
 
+        if result.status == "active_work" and result.player is not None and result.work is not None:
+            from src.services.work_service import resolve_and_post_work
+            from src.ui.work_view import build_work_active_embed, build_work_resolution_posted_embed
+
+            self.stop()
+            if result.work.end_time > discord.utils.utcnow():
+                await interaction.response.edit_message(
+                    embed=build_work_active_embed(result.player, result.work),
+                    view=None,
+                )
+                return
+
+            resolution = await resolve_and_post_work(self.bot, interaction.user.id)
+            await interaction.response.edit_message(
+                embed=build_work_resolution_posted_embed() if resolution is not None else discord.Embed(
+                    title="Resolution Failed",
+                    description="That shift should have been over, but I could not settle it cleanly just yet. Try `/explore` again in a moment.",
+                    color=discord.Color.red(),
+                ),
+                view=None,
+            )
+            return
+
         if result.status == "pending_choice" and result.pending_choice is not None:
             self.stop()
             await interaction.response.edit_message(

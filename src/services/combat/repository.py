@@ -175,6 +175,29 @@ async def get_fight_log(pool: Pool | None, fight_log_id: int) -> FightLogRecord 
         return fight_log_from_record(record)
 
 
+async def fetch_fight_log_by_fight_id(connection: Connection, fight_id: int) -> FightLogRecord | None:
+    record = await connection.fetchrow(
+        f"""
+        SELECT {FIGHT_LOG_COLUMNS}
+        FROM combat_logs
+        WHERE fight_id = $1
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        fight_id,
+    )
+    if record is None:
+        return None
+    return fight_log_from_record(record)
+
+
+async def get_fight_log_by_fight_id(pool: Pool | None, fight_id: int) -> FightLogRecord | None:
+    if pool is None:
+        return None
+    async with pool.acquire() as connection:
+        return await fetch_fight_log_by_fight_id(connection, fight_id)
+
+
 async def append_fight_log_event(
     connection: Connection,
     *,
@@ -308,6 +331,24 @@ async def fetch_active_combat_record(
     )
 
 
+async def fetch_active_combat_record_by_fight(
+    connection: Connection,
+    fight_id: int,
+    *,
+    for_update: bool = False,
+) -> Record | None:
+    lock_clause = " FOR UPDATE" if for_update else ""
+    return await connection.fetchrow(
+        f"""
+        SELECT {ACTIVE_COMBAT_COLUMNS}
+        FROM active_combats
+        WHERE fight_id = $1
+        {lock_clause}
+        """,
+        fight_id,
+    )
+
+
 async def fetch_active_combat_record_by_message(
     connection: Connection,
     message_id: int,
@@ -331,6 +372,16 @@ async def get_active_combat(pool: Pool | None, user_id: int) -> CombatSession | 
         return None
     async with pool.acquire() as connection:
         record = await fetch_active_combat_record(connection, user_id)
+        if record is None:
+            return None
+        return session_from_record(record)
+
+
+async def get_active_combat_by_fight(pool: Pool | None, fight_id: int) -> CombatSession | None:
+    if pool is None:
+        return None
+    async with pool.acquire() as connection:
+        record = await fetch_active_combat_record_by_fight(connection, fight_id)
         if record is None:
             return None
         return session_from_record(record)
@@ -420,4 +471,14 @@ async def delete_active_combat(connection: Connection, user_id: int) -> None:
         WHERE user_id = $1
         """,
         user_id,
+    )
+
+
+async def delete_active_combat_by_fight(connection: Connection, fight_id: int) -> None:
+    await connection.execute(
+        """
+        DELETE FROM active_combats
+        WHERE fight_id = $1
+        """,
+        fight_id,
     )
