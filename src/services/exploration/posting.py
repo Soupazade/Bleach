@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from math import ceil
 from typing import TYPE_CHECKING
 
 import discord
@@ -26,6 +27,20 @@ from src.ui.explore_embed_style import add_explore_divider, build_explore_info_l
 
 if TYPE_CHECKING:
     from src.main import BleachBot
+
+
+def _format_exploration_duration(duration_minutes: int, base_duration_minutes: int) -> str:
+    if duration_minutes == base_duration_minutes:
+        return f"{duration_minutes} minutes"
+
+    return f"{duration_minutes} minutes (base {base_duration_minutes})"
+
+
+def _get_actual_exploration_duration_minutes(resolution: ExplorationResolution) -> int:
+    duration_seconds = (
+        resolution.exploration.end_time - resolution.exploration.start_time
+    ).total_seconds()
+    return max(1, ceil(duration_seconds / 60))
 
 
 async def _get_messageable_channel(bot: "BleachBot", channel_id: int) -> discord.abc.Messageable | None:
@@ -62,6 +77,8 @@ async def _get_existing_exploration_message(
 def build_exploration_result_embed(resolution: ExplorationResolution) -> discord.Embed:
     location = get_location_definition(resolution.exploration.location)
     approach = get_explore_approach(resolution.exploration.approach)
+    duration_minutes = _get_actual_exploration_duration_minutes(resolution)
+    duration_text = _format_exploration_duration(duration_minutes, approach.duration_minutes)
     reputation_title = get_location_reputation_title(
         resolution.player,
         resolution.exploration.location,
@@ -96,7 +113,7 @@ def build_exploration_result_embed(resolution: ExplorationResolution) -> discord
         value=build_explore_info_lines(
             f"Location: {location.name}",
             f"Approach: {approach.label}",
-            f"Duration: {approach.duration_minutes} minutes",
+            f"Duration: {duration_text}",
             f"Reputation: {reputation_title}",
         ),
         inline=True,

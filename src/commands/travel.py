@@ -59,6 +59,31 @@ def register_travel_command(bot: "BleachBot") -> None:
             )
             return
 
+        now = datetime.now(timezone.utc)
+        active_travel = await get_active_travel(bot.db_pool, interaction.user.id)
+        if active_travel is not None:
+            if active_travel.end_time > now:
+                await interaction.response.send_message(
+                    embed=build_travel_active_embed(player, active_travel),
+                )
+                return
+
+            resolution = await resolve_and_post_travel(bot, interaction.user.id)
+            if resolution is None:
+                await interaction.response.send_message(
+                    embed=build_travel_blocked_embed(
+                        "ðŸ§­ Travel Resolution Failed",
+                        "The trip ended, but I could not settle the arrival cleanly just yet. Try `/travel` again in a moment.",
+                        kind="combat",
+                    ),
+                )
+                return
+
+            await interaction.response.send_message(
+                embed=build_travel_resolution_posted_embed(resolution),
+            )
+            return
+
         if not channel_matches_location(player.location_data, interaction.channel):
             await interaction.response.send_message(
                 embed=build_travel_wrong_location_embed(player),
@@ -92,7 +117,6 @@ def register_travel_command(bot: "BleachBot") -> None:
             )
             return
 
-        now = datetime.now(timezone.utc)
         active_work = await get_active_work(bot.db_pool, interaction.user.id)
         if active_work is not None:
             if active_work.end_time > now:

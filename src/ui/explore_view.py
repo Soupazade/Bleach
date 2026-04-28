@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import ceil
 from typing import TYPE_CHECKING
 
 import discord
@@ -33,6 +34,21 @@ from src.ui.explore_embed_style import get_explore_color
 
 if TYPE_CHECKING:
     from src.main import BleachBot
+
+
+def _format_exploration_duration(
+    duration_minutes: int,
+    base_duration_minutes: int,
+) -> str:
+    if duration_minutes == base_duration_minutes:
+        return f"{duration_minutes} minutes"
+
+    return f"{duration_minutes} minutes (base {base_duration_minutes})"
+
+
+def _get_actual_exploration_duration_minutes(exploration: ActiveExploration) -> int:
+    duration_seconds = (exploration.end_time - exploration.start_time).total_seconds()
+    return max(1, ceil(duration_seconds / 60))
 
 
 def build_explore_menu_embed(
@@ -112,6 +128,8 @@ def build_explore_started_embed(
     location = get_location_definition(exploration.location)
     approach = get_explore_approach(exploration.approach)
     reputation_title = get_location_reputation_title(player, exploration.location)
+    actual_duration_minutes = _get_actual_exploration_duration_minutes(exploration)
+    duration_text = _format_exploration_duration(actual_duration_minutes, base_duration_minutes)
     stamina_modifier = stamina_cost - base_stamina_cost
 
     embed = discord.Embed(
@@ -123,7 +141,7 @@ def build_explore_started_embed(
         name="Timing",
         value=build_explore_info_lines(
             f"{approach.focus_emoji} Focus: {approach.label}",
-            f"{approach.duration_emoji} Duration: {approach.duration_minutes} minutes",
+            f"{approach.duration_emoji} Duration: {duration_text}",
             f"🕓 Ends: {discord.utils.format_dt(exploration.end_time, 'R')}",
         ),
         inline=True,
@@ -146,6 +164,8 @@ def build_explore_active_embed(player: PlayerProfile, exploration: ActiveExplora
     location = get_location_definition(exploration.location)
     approach = get_explore_approach(exploration.approach)
     reputation_title = get_location_reputation_title(player, exploration.location)
+    actual_duration_minutes = _get_actual_exploration_duration_minutes(exploration)
+    duration_text = _format_exploration_duration(actual_duration_minutes, approach.duration_minutes)
 
     embed = discord.Embed(
         title="🧭 You Are Already Out There",
@@ -157,7 +177,7 @@ def build_explore_active_embed(player: PlayerProfile, exploration: ActiveExplora
         value=build_explore_info_lines(
             f"📍 Location: {location.name}",
             f"{approach.focus_emoji} Focus: {approach.label}",
-            f"{approach.duration_emoji} Duration: {approach.duration_minutes} minutes",
+            f"{approach.duration_emoji} Duration: {duration_text}",
             f"⏱ Time Left: {get_exploration_remaining_time(exploration)}",
             f"🎭 Reputation: {reputation_title}",
         ),
